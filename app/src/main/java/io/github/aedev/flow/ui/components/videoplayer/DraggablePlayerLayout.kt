@@ -45,6 +45,7 @@ import io.github.aedev.flow.ui.components.videoplayer.motion.MiniPlayerPinchGest
 import io.github.aedev.flow.ui.components.videoplayer.motion.PlayerBodyNestedScrollConnection
 import io.github.aedev.flow.ui.components.videoplayer.motion.RoundRectClipShape
 import io.github.aedev.flow.ui.components.videoplayer.motion.computeDraggablePlayerGeometry
+import io.github.aedev.flow.ui.components.videoplayer.motion.cornerTargetX
 import io.github.aedev.flow.ui.components.videoplayer.motion.draggablePlayerGestures
 import io.github.aedev.flow.ui.components.videoplayer.motion.keyboardSafeMiniY
 import io.github.aedev.flow.ui.components.videoplayer.motion.lerpClamped
@@ -102,6 +103,7 @@ fun DraggablePlayerLayout(
     topPadding: Dp = 56.dp,
     bottomPadding: Dp = 0.dp,
     miniPlayerScale: Float = 0.45f,
+    miniPlayerLeftAligned: Boolean = true,
     isLargeWindow: Boolean = false,
     startInset: Dp = 0.dp,
     isTwoPaneWindow: Boolean = false,
@@ -262,6 +264,15 @@ fun DraggablePlayerLayout(
             )
 
             SideEffect {
+                state.preferLeftAlignedMiniPlayer = miniPlayerLeftAligned
+                val normalMiniWidth = geometry.miniBoxWidth(geometry.baseMiniWidth)
+                val normalMaxX = (geometry.screenWidth - normalMiniWidth - geometry.margin).coerceAtLeast(geometry.minX)
+                state.leftAlignedTargetX =
+                    cornerTargetX(
+                        MiniPlayerCorner.BottomLeft,
+                        minX = geometry.minX,
+                        maxX = normalMaxX,
+                    )
                 state.morphCornerRadiusPx = cornerRadiusProvider
                 state.miniVisualScale = visualMiniScale
                 state.cachedTargetX = geometry.normalTargetX

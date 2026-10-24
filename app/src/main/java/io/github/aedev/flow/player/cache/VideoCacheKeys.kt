@@ -4,32 +4,48 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.cache.CacheKeyFactory
 
-/**
- * Media3's default cache keys, plus a note of which video each key was opened for. Video streams
- * are keyed by their full URL, which carries no video id, so this record is the only way to drop
- * one video's data from the shared cache without wiping everything else in it.
- */
+/** Gives every cached stream a stable owner that survives preload and playback transitions. */
 @UnstableApi
 internal class VideoCacheKeys(
-    private val currentVideoId: () -> String?,
+    videoId: String,
 ) : CacheKeyFactory {
-    private val keysByVideo =
-        object : LinkedHashMap<String, MutableSet<String>>() {
-            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, MutableSet<String>>?): Boolean = size > MAX_VIDEOS
-        }
+    private val prefix = prefixFor(videoId)
 
-    override fun buildCacheKey(dataSpec: DataSpec): String {
-        val key = CacheKeyFactory.DEFAULT.buildCacheKey(dataSpec)
-        currentVideoId()?.let { videoId ->
-            synchronized(keysByVideo) { keysByVideo.getOrPut(videoId) { mutableSetOf() }.add(key) }
-        }
-        return key
+    override fun buildCacheKey(dataSpec: DataSpec): String = prefix + CacheKeyFactory.DEFAULT.buildCacheKey(dataSpec)
+
+    companion object {
+        private const val SESSION_KEY_PREFIX = "flow-video-session-v1|"
+
+        fun prefixFor(videoId: String): String = "$SESSION_KEY_PREFIX$videoId|"
+
+        fun isSessionKey(key: String): Boolean = key.startsWith(SESSION_KEY_PREFIX)
+
+        fun belongsToVideo(
+            key: String,
+            videoId: String,
+        ): Boolean = key.startsWith(prefixFor(videoId))
+    }
+}
+
+/** Tracks only the actively watched video's cache; pausing does not end this session. */
+internal class VideoCacheSession(
+    private val clearVideo: (String) -> Unit,
+) {
+    private var activeVideoId: String? = null
+
+    @Synchronized
+    fun activate(videoId: String) {
+        if (videoId.isBlank() || activeVideoId == videoId) return
+        activeVideoId?.let(clearVideo)
+        activeVideoId = videoId
     }
 
-    /** The keys [videoId]'s streams were cached under, forgotten once returned. */
-    fun takeKeys(videoId: String): Set<String> = synchronized(keysByVideo) { keysByVideo.remove(videoId).orEmpty() }
-
-    private companion object {
-        const val MAX_VIDEOS = 8
+    @Synchronized
+    fun close() {
+        activeVideoId?.let(clearVideo)
+        activeVideoId = null
     }
+
+    @Synchronized
+    fun currentVideoId(): String? = activeVideoId
 }

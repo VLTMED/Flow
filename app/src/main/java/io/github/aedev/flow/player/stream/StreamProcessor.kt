@@ -1,6 +1,7 @@
 package io.github.aedev.flow.player.stream
 
 import android.util.Log
+import io.github.aedev.flow.data.local.AudioCodecPreference
 import io.github.aedev.flow.player.state.AudioTrackOption
 import io.github.aedev.flow.player.state.SubtitleOption
 import io.github.aedev.flow.player.state.SubtitleOrigin
@@ -41,6 +42,37 @@ object StreamProcessor {
                 group.first()
             }.sortedBy { stream -> audioTrackDisplayName(stream).orEmpty() }
             .also { Log.d(TAG, "Processed ${streams.size} audio streams -> ${it.size} unique tracks") }
+
+    fun processAudioQualityStreams(
+        streams: List<AudioStream>,
+        selectedTrack: AudioStream?,
+    ): List<AudioStream> {
+        val trackKey = selectedTrack?.let(::extractTrackLanguageKey) ?: return emptyList()
+        return streams
+            .asSequence()
+            .filter { extractTrackLanguageKey(it) == trackKey }
+            .distinctBy { stream ->
+                stream.getContent().takeIf { it.isNotBlank() }
+                    ?: "${AudioCodecPreference.codecKey(stream.format?.mimeType, stream.itagItem?.codec)}:${stream.averageBitrate}"
+            }.sortedByDescending { it.averageBitrate }
+            .toList()
+    }
+
+    fun indexOfAudioQuality(
+        streams: List<AudioStream>,
+        selectedStream: AudioStream?,
+    ): Int {
+        if (selectedStream == null) return -1
+        val content = selectedStream.getContent()
+        val urlMatch = streams.indexOfFirst { it.getContent() == content }
+        if (urlMatch >= 0) return urlMatch
+
+        val codecKey = AudioCodecPreference.codecKey(selectedStream.format?.mimeType, selectedStream.itagItem?.codec)
+        return streams.indexOfFirst {
+            AudioCodecPreference.codecKey(it.format?.mimeType, it.itagItem?.codec) == codecKey &&
+                it.averageBitrate == selectedStream.averageBitrate
+        }
+    }
 
     /**
      * Once named tracks are present, the untagged bucket is the same audio arriving from a backend
@@ -140,6 +172,7 @@ object StreamProcessor {
                         ?.takeIf { it.isNotBlank() }
                         ?: "",
                 bitrate = stream.averageBitrate.coerceAtLeast(0).toLong(),
+                codecKey = AudioCodecPreference.codecKey(stream.format?.mimeType, stream.itagItem?.codec).orEmpty(),
             )
         }
 

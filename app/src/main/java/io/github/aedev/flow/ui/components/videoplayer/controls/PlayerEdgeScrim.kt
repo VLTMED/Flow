@@ -28,12 +28,17 @@ internal const val BOTTOM_BAR_SCRIM_ALPHA = 0.44f
 internal fun Modifier.playerEdgeScrim(
     edge: ScrimEdge,
     color: Color = PlayerScrim,
+    disabled: Boolean = false,
 ): Modifier =
-    drawWithCache {
-        val brush =
-            when (edge) {
-                ScrimEdge.Top -> Brush.verticalGradient(listOf(color, Color.Transparent))
-                ScrimEdge.Bottom -> Brush.verticalGradient(listOf(Color.Transparent, color))
-            }
-        onDrawBehind { drawRect(brush) }
+    if (disabled) {
+        this
+    } else {
+        drawWithCache {
+            val brush =
+                when (edge) {
+                    ScrimEdge.Top -> Brush.verticalGradient(listOf(color, Color.Transparent))
+                    ScrimEdge.Bottom -> Brush.verticalGradient(listOf(Color.Transparent, color))
+                }
+            onDrawBehind { drawRect(brush) }
+        }
     }

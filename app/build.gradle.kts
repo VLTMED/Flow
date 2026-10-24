@@ -54,11 +54,11 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "io.github.aedev.flow"
+        applicationId = "io.github.aedev.flow.independent"
         minSdk = 26
         targetSdk = 36
-        versionCode = 19
-        versionName = "3.0.0"
+        versionCode = 28
+        versionName = "3.0.4"
 
         buildConfigField("int", "NIGHTLY_RUN", "0")
         buildConfigField("String", "APP_LANGUAGE_TAGS", "\"${(listOf("en") + translatedLocaleTags()).joinToString(",")}\"")
@@ -99,11 +99,19 @@ android {
             dimension = "version"
             isDefault = true
             buildConfigField("Boolean", "UPDATER_ENABLED", "true")
+            buildConfigField("Boolean", "DISCORD_ENABLED", "true")
             buildConfigField("String", "DISCORD_APPLICATION_ID", "\"1526515771021328514\"")
         }
         create("foss") {
             dimension = "version"
             buildConfigField("Boolean", "UPDATER_ENABLED", "false")
+            buildConfigField("Boolean", "DISCORD_ENABLED", "false")
+        }
+        create("fossDiscord") {
+            dimension = "version"
+            buildConfigField("Boolean", "UPDATER_ENABLED", "false")
+            buildConfigField("Boolean", "DISCORD_ENABLED", "true")
+            buildConfigField("String", "DISCORD_APPLICATION_ID", "\"1526515771021328514\"")
         }
     }
 
@@ -189,6 +197,8 @@ android {
 
     sourceSets {
         getByName("androidTest").assets.directories.add("$projectDir/schemas")
+        getByName("fossDiscord").kotlin.srcDir("src/github/java/io/github/aedev/flow/discord")
+        getByName("fossDiscord").kotlin.srcDir("src/foss/java/io/github/aedev/flow/updater")
     }
 
     compileOptions {

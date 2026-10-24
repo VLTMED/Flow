@@ -1,5 +1,6 @@
 package io.github.aedev.flow.player.stream
 
+import io.github.aedev.flow.data.local.AudioCodecPreference
 import io.github.aedev.flow.data.local.VideoQuality
 import io.github.aedev.flow.data.model.SponsorBlockSegment
 import io.github.aedev.flow.data.model.Video
@@ -56,6 +57,7 @@ sealed interface ResolvedPlayback {
         val relatedVideos: List<Video>,
         val preferredQuality: VideoQuality,
         val preferredAudioLanguage: String,
+        val preferredAudioCodec: AudioCodecPreference = AudioCodecPreference.AUTO,
         val preferredCodecKey: String,
         val preferredSubtitleLanguage: String,
         val resumePositionOverrideMs: Long?,

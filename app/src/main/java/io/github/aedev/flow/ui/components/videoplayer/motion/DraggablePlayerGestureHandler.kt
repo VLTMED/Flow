@@ -212,12 +212,7 @@ internal class DraggablePlayerGestureHandler(
         if (isCollapseDrag) {
             val velY = velocityTracker.calculateVelocity().y
             val collapseTravel = metrics.targetMiniY - metrics.statusBarHeight
-            if (shouldCollapseOnRelease(state.expandFraction.value, velY)) {
-                metrics.onCollapseGesture?.invoke()
-                state.collapse(fractionVelocity(velY, collapseTravel))
-            } else {
-                state.expand(fractionVelocity(velY, collapseTravel))
-            }
+            commitCollapseRelease(state, metrics, velY, collapseTravel)
             return
         }
     }
@@ -470,6 +465,22 @@ internal class DraggablePlayerGestureHandler(
                 launch { state.offsetY.animateTo(targetY, miniSnapSpringSpec) }
             }
         }
+    }
+}
+
+/** Commit the release decision once, after the pointer gesture ends. */
+internal fun commitCollapseRelease(
+    state: PlayerDraggableState,
+    metrics: DraggablePlayerGestureMetrics,
+    velocityY: Float,
+    collapseTravel: Float,
+) {
+    val releaseFractionVelocity = fractionVelocity(velocityY, collapseTravel)
+    if (shouldCollapseOnRelease(state.expandFraction.value, velocityY)) {
+        metrics.onCollapseGesture?.invoke()
+        state.collapse(releaseFractionVelocity)
+    } else {
+        state.expand(releaseFractionVelocity)
     }
 }
 

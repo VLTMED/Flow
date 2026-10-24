@@ -20,6 +20,7 @@ import io.github.aedev.flow.notification.BackgroundCheckScheduler
 import io.github.aedev.flow.notification.NotificationHelper
 import io.github.aedev.flow.player.PlaybackShutdown
 import io.github.aedev.flow.player.SleepTimerManager
+import io.github.aedev.flow.player.cache.PlayerCacheManager
 import io.github.aedev.flow.ui.screens.home.HomeFeedLanguageReset
 import io.github.aedev.flow.utils.AppLanguageManager
 import io.github.aedev.flow.utils.FlowCrashHandler
@@ -94,6 +95,11 @@ class FlowApplication :
         DiscordPresenceRuntime.initialize(this, okHttpClient)
 
         val playerPreferences = PlayerPreferences(this)
+
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            runCatching { PlayerCacheManager.preload(this@FlowApplication) }
+                .onFailure { Log.w(TAG, "Previous video-session cache cleanup failed; player initialization will retry", it) }
+        }
 
         // Injects modern TLS/SSL certificates so OkHttp and Ktor don't crash
         if (android.os.Build.VERSION.SDK_INT <= android.os.Build.VERSION_CODES.N_MR1) {

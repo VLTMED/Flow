@@ -1,5 +1,6 @@
 package io.github.aedev.flow.player.stream
 
+import io.github.aedev.flow.data.local.AudioCodecPreference
 import io.github.aedev.flow.data.local.VideoQuality
 import io.github.aedev.flow.innertube.models.response.PlayerResponse
 import org.schabi.newpipe.extractor.stream.AudioStream
@@ -16,6 +17,7 @@ object MergedPlaybackAssembly {
         quality: VideoQuality,
         preferredAudioLanguage: String,
         preferredCodecKey: String,
+        preferredAudioCodec: AudioCodecPreference = AudioCodecPreference.AUTO,
     ): Pair<VideoStream?, AudioStream?> {
         val innerTubeVideoStreams = InnerTubeStreamBridge.convertVideoFormats(innerTubeVideoFormats)
         val innerTubeAudioStreams = InnerTubeStreamBridge.convertAudioFormats(innerTubeAudioFormats)
@@ -25,6 +27,7 @@ object MergedPlaybackAssembly {
             preferredQuality = quality,
             preferredAudioLanguage = preferredAudioLanguage,
             preferredCodecKey = preferredCodecKey,
+            preferredAudioCodec = preferredAudioCodec,
         )
     }
 }

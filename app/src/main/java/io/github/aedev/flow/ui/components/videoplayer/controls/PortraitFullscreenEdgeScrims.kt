@@ -9,7 +9,10 @@ import androidx.compose.ui.Modifier
 import io.github.aedev.flow.ui.theme.PlayerScrimEdgeGradient
 
 @Composable
-internal fun PortraitFullscreenEdgeScrims(modifier: Modifier = Modifier) {
+internal fun PortraitFullscreenEdgeScrims(
+    disabled: Boolean,
+    modifier: Modifier = Modifier,
+) {
     Box(modifier = modifier) {
         Box(
             modifier =
@@ -17,7 +20,7 @@ internal fun PortraitFullscreenEdgeScrims(modifier: Modifier = Modifier) {
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
                     .fillMaxHeight(0.24f)
-                    .playerEdgeScrim(ScrimEdge.Top, PlayerScrimEdgeGradient),
+                    .playerEdgeScrim(ScrimEdge.Top, PlayerScrimEdgeGradient, disabled),
         )
         Box(
             modifier =
@@ -25,7 +28,7 @@ internal fun PortraitFullscreenEdgeScrims(modifier: Modifier = Modifier) {
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .fillMaxHeight(0.24f)
-                    .playerEdgeScrim(ScrimEdge.Bottom, PlayerScrimEdgeGradient),
+                    .playerEdgeScrim(ScrimEdge.Bottom, PlayerScrimEdgeGradient, disabled),
         )
     }
 }

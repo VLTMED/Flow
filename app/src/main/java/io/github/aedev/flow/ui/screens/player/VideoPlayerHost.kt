@@ -465,6 +465,7 @@ fun VideoPlayerHost(
                 expandedPlayerHeightFractionOverride = mediaSheetGeometry.playerHeightFractionOverride,
                 bottomPadding = bottomPadding,
                 miniPlayerScale = miniPlayerScale,
+                miniPlayerLeftAligned = prefs.miniPlayerLeftAligned,
                 isLargeWindow = isLargeWindow,
                 isTwoPaneWindow = isTwoPaneWindow,
                 detailPaneWidth = detailPaneWidth,

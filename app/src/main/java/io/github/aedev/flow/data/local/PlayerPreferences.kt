@@ -11,6 +11,7 @@ import io.github.aedev.flow.data.video.downloader.work.RetagResult
 import io.github.aedev.flow.data.video.storage.DownloadLocation
 import io.github.aedev.flow.network.AppProxyConfig
 import io.github.aedev.flow.network.AppProxyType
+import io.github.aedev.flow.player.config.PlayerConfig
 import io.github.aedev.flow.player.stream.CaptionTrackResolver
 import io.github.aedev.flow.ui.components.videoplayer.subtitle.SubtitleEdgeType
 import io.github.aedev.flow.ui.components.videoplayer.subtitle.SubtitleStyle
@@ -110,6 +111,8 @@ class PlayerPreferences(
         val MAX_BUFFER_MS = intPreferencesKey("max_buffer_ms")
         val BUFFER_FOR_PLAYBACK_MS = intPreferencesKey("buffer_for_playback_ms")
         val BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS = intPreferencesKey("buffer_for_playback_after_rebuffer_ms")
+        val VIDEO_BUFFER_MEMORY_MB = intPreferencesKey("video_buffer_memory_mb")
+        val VIDEO_BACK_BUFFER_MS = intPreferencesKey("video_back_buffer_ms")
 
         // Buffer profiles
         val BUFFER_PROFILE = stringPreferencesKey("buffer_profile")
@@ -148,6 +151,8 @@ class PlayerPreferences(
         // Audio track preference
         val PREFERRED_AUDIO_LANGUAGE = stringPreferencesKey("preferred_audio_language")
         val MUSIC_AUDIO_QUALITY = stringPreferencesKey("music_audio_quality")
+        val AUDIO_CODEC_PREFERENCE = stringPreferencesKey("audio_codec_preference")
+        val MUSIC_AUDIO_FORMAT_ITAG = intPreferencesKey("music_audio_format_itag")
 
         // Subtitle preferences
         val AUTO_ENABLE_SUBTITLES = booleanPreferencesKey("auto_enable_subtitles")
@@ -171,6 +176,8 @@ class PlayerPreferences(
         val GESTURE_OVERLAY_STYLE = stringPreferencesKey("gesture_overlay_style")
         val PLAYER_HAPTICS_ENABLED = booleanPreferencesKey("player_haptics_enabled")
         val GROUPED_QUALITY_SELECTOR_ENABLED = booleanPreferencesKey("grouped_quality_selector_enabled")
+        val QUALITY_BUTTON_AUDIO_TRACKS_LONG_PRESS_ENABLED =
+            booleanPreferencesKey("quality_button_audio_tracks_long_press_enabled")
         val SHORTS_CONTENT_ENABLED = booleanPreferencesKey("shorts_content_enabled")
         val CHANNEL_SHORTS_TAB_WHEN_HIDDEN = booleanPreferencesKey("channel_shorts_tab_when_hidden")
         val NOTES_ENABLED = booleanPreferencesKey("notes_enabled")
@@ -280,6 +287,8 @@ class PlayerPreferences(
         val OVERLAY_COMMENTS_ENABLED = booleanPreferencesKey("overlay_comments_enabled")
         val OVERLAY_SPONSORBLOCK_ENABLED = booleanPreferencesKey("overlay_sponsorblock_enabled")
         val OVERLAY_NEXT_PREV_ENABLED = booleanPreferencesKey("overlay_next_prev_enabled")
+        val OVERLAY_EDGE_SCRIM_DISABLED = booleanPreferencesKey("overlay_edge_scrim_disabled")
+        val OVERLAY_HIDE_CENTER_TRANSPORT_CONTROLS = booleanPreferencesKey("overlay_hide_center_transport_controls")
 
         // Fullscreen Player
         val ADAPTIVE_PLAYER_SIZE_ENABLED = booleanPreferencesKey("adaptive_player_size_enabled")
@@ -292,6 +301,7 @@ class PlayerPreferences(
 
         // Mini Player Customizations
         val MINI_PLAYER_SCALE = floatPreferencesKey("mini_player_scale")
+        val MINI_PLAYER_LEFT_ALIGNED = booleanPreferencesKey("mini_player_left_aligned")
         val MINI_PLAYER_SHOW_SKIP_CONTROLS = booleanPreferencesKey("mini_player_show_skip_controls")
         val MINI_PLAYER_SHOW_NEXT_PREV_CONTROLS = booleanPreferencesKey("mini_player_show_next_prev_controls")
         val MINI_BAR_SWIPE_LEFT_ACTION = stringPreferencesKey("mini_bar_swipe_left_action")
@@ -703,6 +713,9 @@ class PlayerPreferences(
             commentsEnabled = this[Keys.OVERLAY_COMMENTS_ENABLED] ?: overlayDefaults.commentsEnabled,
             sponsorBlockEnabled = this[Keys.OVERLAY_SPONSORBLOCK_ENABLED] ?: overlayDefaults.sponsorBlockEnabled,
             nextPrevButtonsEnabled = this[Keys.OVERLAY_NEXT_PREV_ENABLED] ?: overlayDefaults.nextPrevButtonsEnabled,
+            edgeScrimDisabled = this[Keys.OVERLAY_EDGE_SCRIM_DISABLED] ?: overlayDefaults.edgeScrimDisabled,
+            hideCenterTransportControls =
+                this[Keys.OVERLAY_HIDE_CENTER_TRANSPORT_CONTROLS] ?: overlayDefaults.hideCenterTransportControls,
             showControlsWhileLoading =
                 this[Keys.SHOW_CONTROLS_WHILE_LOADING] ?: overlayDefaults.showControlsWhileLoading,
             fullscreenSeekbarHorizontalPaddingDp =
@@ -922,6 +935,17 @@ class PlayerPreferences(
     suspend fun setGroupedQualitySelectorEnabled(enabled: Boolean) {
         context.playerPreferencesDataStore.edit { preferences ->
             preferences[Keys.GROUPED_QUALITY_SELECTOR_ENABLED] = enabled
+        }
+    }
+
+    val qualityButtonAudioTracksLongPressEnabled: Flow<Boolean> =
+        context.playerPreferencesDataStore.data.map { preferences ->
+            preferences[Keys.QUALITY_BUTTON_AUDIO_TRACKS_LONG_PRESS_ENABLED] ?: true
+        }
+
+    suspend fun setQualityButtonAudioTracksLongPressEnabled(enabled: Boolean) {
+        context.playerPreferencesDataStore.edit { preferences ->
+            preferences[Keys.QUALITY_BUTTON_AUDIO_TRACKS_LONG_PRESS_ENABLED] = enabled
         }
     }
 
@@ -1559,6 +1583,31 @@ class PlayerPreferences(
     suspend fun setMusicAudioQuality(quality: MusicAudioQuality) {
         context.playerPreferencesDataStore.edit { preferences ->
             preferences[Keys.MUSIC_AUDIO_QUALITY] = quality.label
+            preferences[Keys.MUSIC_AUDIO_FORMAT_ITAG] = 0
+        }
+    }
+
+    val audioCodecPreference: Flow<AudioCodecPreference> =
+        context.playerPreferencesDataStore.data.map { preferences ->
+            AudioCodecPreference.fromKey(preferences[Keys.AUDIO_CODEC_PREFERENCE])
+        }
+
+    suspend fun setAudioCodecPreference(value: AudioCodecPreference) {
+        context.playerPreferencesDataStore.edit { preferences ->
+            preferences[Keys.AUDIO_CODEC_PREFERENCE] = value.key
+            preferences[Keys.MUSIC_AUDIO_FORMAT_ITAG] = 0
+        }
+    }
+
+    /** A preferred exact format id for music when the current track offers it; zero uses the global quality rules. */
+    val musicAudioFormatItag: Flow<Int> =
+        context.playerPreferencesDataStore.data.map { preferences ->
+            preferences[Keys.MUSIC_AUDIO_FORMAT_ITAG]?.coerceAtLeast(0) ?: 0
+        }
+
+    suspend fun setMusicAudioFormatItag(itag: Int) {
+        context.playerPreferencesDataStore.edit { preferences ->
+            preferences[Keys.MUSIC_AUDIO_FORMAT_ITAG] = itag.coerceAtLeast(0)
         }
     }
 
@@ -1856,6 +1905,19 @@ class PlayerPreferences(
         context.playerPreferencesDataStore.edit { preferences ->
             preferences[Keys.OVERLAY_NEXT_PREV_ENABLED] = enabled
         }
+    }
+
+    val overlayEdgeScrimDisabled: Flow<Boolean> = overlayPreferences.map { it.edgeScrimDisabled }.distinctUntilChanged()
+
+    suspend fun setOverlayEdgeScrimDisabled(disabled: Boolean) {
+        context.playerPreferencesDataStore.edit { it[Keys.OVERLAY_EDGE_SCRIM_DISABLED] = disabled }
+    }
+
+    val overlayHideCenterTransportControls: Flow<Boolean> =
+        overlayPreferences.map { it.hideCenterTransportControls }.distinctUntilChanged()
+
+    suspend fun setOverlayHideCenterTransportControls(hidden: Boolean) {
+        context.playerPreferencesDataStore.edit { it[Keys.OVERLAY_HIDE_CENTER_TRANSPORT_CONTROLS] = hidden }
     }
 
     val overlayCcEnabled: Flow<Boolean> =
@@ -3056,6 +3118,31 @@ class PlayerPreferences(
         }
     }
 
+    /** Requested RAM budget for the video allocator; zero means use the device-aware default. */
+    val videoBufferMemoryMb: Flow<Int> =
+        context.playerPreferencesDataStore.data.map { it[Keys.VIDEO_BUFFER_MEMORY_MB] ?: 0 }
+
+    suspend fun setVideoBufferMemoryMb(megabytes: Int) {
+        context.playerPreferencesDataStore.edit {
+            it[Keys.VIDEO_BUFFER_MEMORY_MB] =
+                megabytes.coerceIn(0, PlayerConfig.MAX_SELECTABLE_MAIN_TARGET_BUFFER_MIB)
+        }
+    }
+
+    /** Requested retention behind the playhead; constrained heaps may disable it at runtime. */
+    val videoBackBufferMs: Flow<Int> =
+        context.playerPreferencesDataStore.data
+            .map { preferences ->
+                (preferences[Keys.VIDEO_BACK_BUFFER_MS] ?: PlayerConfig.BACK_BUFFER_DURATION_MS)
+                    .coerceIn(0, PlayerConfig.MAX_SAFE_BACK_BUFFER_DURATION_MS)
+            }
+
+    suspend fun setVideoBackBufferMs(ms: Int) {
+        context.playerPreferencesDataStore.edit { preferences ->
+            preferences[Keys.VIDEO_BACK_BUFFER_MS] = ms.coerceIn(0, PlayerConfig.MAX_SAFE_BACK_BUFFER_DURATION_MS)
+        }
+    }
+
     val bufferForPlaybackMs: Flow<Int> =
         context.playerPreferencesDataStore.data
             .map { preferences ->
@@ -3530,6 +3617,13 @@ class PlayerPreferences(
         context.playerPreferencesDataStore.edit { preferences ->
             preferences[Keys.MINI_PLAYER_SCALE] = scale
         }
+    }
+
+    val miniPlayerLeftAligned: Flow<Boolean> =
+        context.playerPreferencesDataStore.data.map { it[Keys.MINI_PLAYER_LEFT_ALIGNED] ?: true }
+
+    suspend fun setMiniPlayerLeftAligned(enabled: Boolean) {
+        context.playerPreferencesDataStore.edit { it[Keys.MINI_PLAYER_LEFT_ALIGNED] = enabled }
     }
 
     val miniPlayerContinueWatchingEnabled: Flow<Boolean> =

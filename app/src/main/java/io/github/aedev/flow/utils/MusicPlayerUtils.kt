@@ -2,6 +2,7 @@ package io.github.aedev.flow.utils
 
 import android.util.Log
 import io.github.aedev.flow.FlowApplication
+import io.github.aedev.flow.data.local.AudioCodecPreference
 import io.github.aedev.flow.data.local.MusicAudioQuality
 import io.github.aedev.flow.data.local.PlayerPreferences
 import io.github.aedev.flow.innertube.models.YouTubeClient
@@ -15,7 +16,12 @@ import io.github.aedev.flow.player.stream.VideoUnavailableException
 import io.github.aedev.flow.player.stream.preferNonDrc
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.IOException
@@ -38,7 +44,10 @@ object MusicPlayerUtils {
     }
 
     private val resultCache = ConcurrentHashMap<String, CachedResult>()
+    private val _audioQualityByVideoId = MutableStateFlow<Map<String, MusicAudioQualityState>>(emptyMap())
+    val audioQualityByVideoId: StateFlow<Map<String, MusicAudioQualityState>> = _audioQualityByVideoId.asStateFlow()
     private const val MAX_RESULT_CACHE_TTL_MS = 600_000L // 10 minutes
+    private const val MAX_AUDIO_QUALITY_ENTRIES = 40
     private const val LOUDNESS_TARGET_LKFS = -14.0
     private const val MIN_LOUDNESS_GAIN_DB = -20f
 
@@ -56,11 +65,25 @@ object MusicPlayerUtils {
         val streamExpiresInSeconds: Int,
         val usedClient: YouTubeClient,
         val videoFormats: List<PlayerResponse.StreamingData.Format> = emptyList(),
+        val audioQualityOptions: List<MusicAudioQualityOption> = emptyList(),
+    )
+
+    data class MusicAudioQualityOption(
+        val itag: Int,
+        val codecKey: String,
+        val bitrateKbps: Int,
+    )
+
+    data class MusicAudioQualityState(
+        val selectedItag: Int,
+        val options: List<MusicAudioQualityOption>,
     )
 
     private data class AudioSelectionPreferences(
         val preferredAudioLanguage: String,
         val musicAudioQuality: MusicAudioQuality,
+        val audioCodecPreference: AudioCodecPreference,
+        val musicAudioFormatItag: Int,
     )
 
     private suspend fun loadAudioSelectionPreferences(): AudioSelectionPreferences {
@@ -71,6 +94,8 @@ object MusicPlayerUtils {
                 playerPreferences.musicAudioQuality
                     .first()
                     .resolve(onWifi = NetworkState.isOnWifi(FlowApplication.appContext)),
+            audioCodecPreference = playerPreferences.audioCodecPreference.firstOrNull() ?: AudioCodecPreference.AUTO,
+            musicAudioFormatItag = playerPreferences.musicAudioFormatItag.firstOrNull() ?: 0,
         )
     }
 
@@ -78,10 +103,12 @@ object MusicPlayerUtils {
         Log.d(TAG, "Force refresh requested for $videoId")
         activeRequests.remove(videoId)
         resultCache.remove(videoId)
+        _audioQualityByVideoId.update { it - videoId }
     }
 
     fun clearPlaybackCache() {
         resultCache.clear()
+        _audioQualityByVideoId.value = emptyMap()
         Log.d(TAG, "Cleared all cached playback results")
     }
 
@@ -109,9 +136,11 @@ object MusicPlayerUtils {
             if (cached != null) {
                 if (System.currentTimeMillis() < cached.expiryMs && cached.result.isSuccess && !cached.isFromGatedClient()) {
                     Log.d(TAG, "Returning cached result for $videoId (expires in ${cached.expiryMs - System.currentTimeMillis()}ms)")
+                    cached.result.getOrNull()?.let { publishAudioQuality(videoId, it) }
                     return@withContext cached.result
                 } else {
                     resultCache.remove(videoId)
+                    _audioQualityByVideoId.update { it - videoId }
                 }
             }
 
@@ -137,6 +166,7 @@ object MusicPlayerUtils {
                     val expiresInSec = result.getOrNull()?.streamExpiresInSeconds ?: 300
                     val ttlMs = minOf(expiresInSec * 1000L - 60_000L, MAX_RESULT_CACHE_TTL_MS).coerceAtLeast(30_000L)
                     resultCache[videoId] = CachedResult(result, System.currentTimeMillis() + ttlMs)
+                    result.getOrNull()?.let { publishAudioQuality(videoId, it) }
                     Log.d(TAG, "Cached result for $videoId, TTL=${ttlMs / 1000}s")
                 }
 
@@ -168,9 +198,11 @@ object MusicPlayerUtils {
                             IOException("Failed to resolve stream for $videoId after trying all clients")
                         }
                 } ?: throw MusicResolveTimeoutException(videoId, RESOLVE_TIMEOUT_MS)
+            val audioPreferences = loadAudioSelectionPreferences()
             val format =
-                findBestAudioFormat(extraction.audioFormats, loadAudioSelectionPreferences())
+                findBestAudioFormat(extraction.audioFormats, audioPreferences)
                     ?: throw IOException("No playable audio format for $videoId via ${extraction.usedClient.clientName}")
+            val audioQualityOptions = audioQualityOptions(extraction.audioFormats, audioPreferences.preferredAudioLanguage)
             val streamUrl = format.url ?: throw IOException("Audio format ${format.itag} of $videoId has no url")
             val response = extraction.playerResponse
 
@@ -188,6 +220,7 @@ object MusicPlayerUtils {
                 streamExpiresInSeconds = response.streamingData?.expiresInSeconds ?: 21600,
                 usedClient = extraction.usedClient,
                 videoFormats = extraction.videoFormats,
+                audioQualityOptions = audioQualityOptions,
             )
         }.onFailure { e ->
             val message =
@@ -213,11 +246,66 @@ object MusicPlayerUtils {
         }
 
         val preferredFormats = preferredAudioFormats(audioFormats, audioPreferences.preferredAudioLanguage)
+        exactAudioFormatByItag(preferredFormats, audioPreferences.musicAudioFormatItag) { it.itag }?.let { selected ->
+            Log.d(TAG, "Using requested music audio itag=${selected.itag}")
+            return selected
+        }
+        val codecFormats =
+            if (audioPreferences.audioCodecPreference == AudioCodecPreference.AUTO) {
+                preferredFormats
+            } else {
+                preferredFormats
+                    .filter { format -> AudioCodecPreference.matches(audioPreferences.audioCodecPreference, format.mimeType) }
+                    .ifEmpty { preferredFormats }
+            }
 
-        val bestFormat = selectPreferredMusicFormat(preferredFormats, audioPreferences.musicAudioQuality)
+        val bestFormat = selectPreferredMusicFormat(codecFormats, audioPreferences.musicAudioQuality)
 
         Log.d(TAG, "Selected format: ${bestFormat?.mimeType}, bitrate: ${bestFormat?.bitrate}")
         return bestFormat
+    }
+
+    internal fun <T> exactAudioFormatByItag(
+        formats: List<T>,
+        requestedItag: Int,
+        itagOf: (T) -> Int,
+    ): T? =
+        if (requestedItag <= 0) {
+            null
+        } else {
+            formats.firstOrNull { itagOf(it) == requestedItag }
+        }
+
+    private fun audioQualityOptions(
+        formats: List<PlayerResponse.StreamingData.Format>,
+        preferredAudioLanguage: String,
+    ): List<MusicAudioQualityOption> =
+        preferredAudioFormats(
+            formats
+                .filter { format -> format.audioTrack?.isAutoDubbed != true && !format.url.isNullOrEmpty() }
+                .preferNonDrc(),
+            preferredAudioLanguage,
+        ).distinctBy { it.itag }
+            .map { format ->
+                val bitrate = format.audioBitrate()
+                MusicAudioQualityOption(
+                    itag = format.itag,
+                    codecKey = AudioCodecPreference.codecKey(format.mimeType) ?: "other",
+                    bitrateKbps = if (bitrate > 0) (bitrate + 500) / 1000 else 0,
+                )
+            }
+
+    private fun publishAudioQuality(
+        videoId: String,
+        playbackData: PlaybackData,
+    ) {
+        _audioQualityByVideoId.update { current ->
+            LinkedHashMap(current).apply {
+                remove(videoId)
+                put(videoId, MusicAudioQualityState(playbackData.format.itag, playbackData.audioQualityOptions))
+                while (size > MAX_AUDIO_QUALITY_ENTRIES) remove(entries.first().key)
+            }
+        }
     }
 
     private fun selectPreferredMusicFormat(

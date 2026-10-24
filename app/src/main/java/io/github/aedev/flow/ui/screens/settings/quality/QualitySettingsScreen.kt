@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.aedev.flow.R
+import io.github.aedev.flow.data.local.AudioCodecPreference
 import io.github.aedev.flow.data.local.MusicAudioQuality
 import io.github.aedev.flow.data.local.ThumbnailQuality
 import io.github.aedev.flow.data.local.VideoCodec
@@ -41,6 +42,7 @@ private enum class QualityPicker {
     SHORTS_MOBILE,
     CODEC,
     FALLBACK_CODEC,
+    AUDIO_CODEC,
     THUMBNAILS_WIFI,
     THUMBNAILS_MOBILE,
 }
@@ -58,6 +60,7 @@ internal fun QualitySettingsScreen(
     val shortsWifi by viewModel.shortsWifi.collectAsStateWithLifecycle()
     val shortsMobile by viewModel.shortsMobile.collectAsStateWithLifecycle()
     val music by viewModel.music.collectAsStateWithLifecycle()
+    val audioCodecPreference by viewModel.audioCodecPreference.collectAsStateWithLifecycle()
     val codec by viewModel.codec.collectAsStateWithLifecycle()
     val fallbackCodec by viewModel.fallbackCodec.collectAsStateWithLifecycle()
     val thumbnailsWifi by viewModel.thumbnailsWifi.collectAsStateWithLifecycle()
@@ -81,6 +84,7 @@ internal fun QualitySettingsScreen(
     val thumbnailsMobileLabel = stringResource(thumbnailQualityLabel(thumbnailsMobile))
     val musicLabels = MusicQualities.associateWith { stringResource(musicQualityLabel(it)) }
     val musicAutoSummary = stringResource(R.string.settings_music_quality_auto_summary)
+    val audioCodecPreferenceLabel = stringResource(audioCodecPreferenceLabelRes(audioCodecPreference))
 
     SettingsPage(
         title = stringResource(R.string.quality),
@@ -121,6 +125,12 @@ internal fun QualitySettingsScreen(
                             onClick = { viewModel.setMusic(quality) },
                         )
                     }
+                    nav(
+                        QualityIndex.musicAudioCodec,
+                        value = audioCodecPreferenceLabel,
+                        showChevron = false,
+                        onClick = { picker = QualityPicker.AUDIO_CODEC },
+                    )
                 }
             }
 
@@ -177,6 +187,7 @@ internal fun QualitySettingsScreen(
                     fallbackCodec,
                     thumbnailsWifi,
                     thumbnailsMobile,
+                    audioCodecPreference,
                 ),
             viewModel = viewModel,
             onDismiss = { picker = null },
@@ -193,6 +204,7 @@ private data class QualityPickerState(
     val fallbackCodec: VideoCodec,
     val thumbnailsWifi: ThumbnailQuality,
     val thumbnailsMobile: ThumbnailQuality,
+    val audioCodecPreference: AudioCodecPreference,
 )
 
 @Composable
@@ -290,5 +302,26 @@ private fun QualityPickerDialog(
                 onDismiss = onDismiss,
             )
         }
+
+        QualityPicker.AUDIO_CODEC -> {
+            FlowChoiceDialog(
+                title = stringResource(R.string.audio_codec_preference),
+                description = stringResource(R.string.audio_codec_preference_description),
+                options =
+                    AudioCodecPreference.entries.map {
+                        FlowChoice(it, stringResource(audioCodecPreferenceLabelRes(it)))
+                    },
+                selected = state.audioCodecPreference,
+                onSelect = viewModel::setAudioCodecPreference,
+                onDismiss = onDismiss,
+            )
+        }
     }
 }
+
+private fun audioCodecPreferenceLabelRes(preference: AudioCodecPreference): Int =
+    when (preference) {
+        AudioCodecPreference.AUTO -> R.string.audio_codec_auto
+        AudioCodecPreference.AAC -> R.string.audio_codec_aac
+        AudioCodecPreference.OPUS -> R.string.audio_codec_opus
+    }

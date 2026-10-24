@@ -54,6 +54,8 @@ class PlayerDraggableState(
     val scope: CoroutineScope,
 ) {
     var corner by mutableStateOf(MiniPlayerCorner.BottomRight)
+    var preferLeftAlignedMiniPlayer by mutableStateOf(true)
+    internal var leftAlignedTargetX by mutableFloatStateOf(0f)
     var isDragging by mutableStateOf(false)
 
     /** The edge the mini player is tucked past, with only its handle on screen; null while in view. */
@@ -134,7 +136,7 @@ class PlayerDraggableState(
      */
     fun expand(velocity: Float? = null) {
         if (openOrigin != null) return
-        corner = MiniPlayerCorner.BottomRight
+        corner = if (preferLeftAlignedMiniPlayer) MiniPlayerCorner.BottomLeft else MiniPlayerCorner.BottomRight
         tuckedSide = null
         scope.launch {
             isShrinkingToCorner = false
@@ -161,7 +163,7 @@ class PlayerDraggableState(
      * before the coroutine runs so an [expand] issued in the same frame leaves this open alone.
      */
     fun open(origin: SheetOpenOrigin) {
-        corner = MiniPlayerCorner.BottomRight
+        corner = if (preferLeftAlignedMiniPlayer) MiniPlayerCorner.BottomLeft else MiniPlayerCorner.BottomRight
         tuckedSide = null
         openOrigin = origin
         posterPlaceholderKey = (origin as? SheetOpenOrigin.Thumbnail)?.imageKey
@@ -239,6 +241,14 @@ class PlayerDraggableState(
 
     /** [velocity] is the release speed in fraction per second, as for [expand]. */
     fun collapse(velocity: Float? = null) {
+        if (preferLeftAlignedMiniPlayer) {
+            corner =
+                when (corner) {
+                    MiniPlayerCorner.TopRight, MiniPlayerCorner.TopLeft -> MiniPlayerCorner.TopLeft
+                    MiniPlayerCorner.BottomRight, MiniPlayerCorner.BottomLeft -> MiniPlayerCorner.BottomLeft
+                }
+            cachedTargetX = leftAlignedTargetX
+        }
         scope.launch {
             isShrinkingToCorner = false
             val anim = playerCollapseSpringSpec

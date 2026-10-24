@@ -52,6 +52,7 @@ private fun resistedTravel(
 internal fun Modifier.playerDragGestures(
     currentPosition: State<() -> Long>,
     duration: State<Long>,
+    isSpeedBoostActive: State<Boolean>,
     scope: CoroutineScope,
     isFullscreen: State<Boolean>,
     onBrightnessChange: State<(Float) -> Unit>,
@@ -401,8 +402,17 @@ internal fun Modifier.playerDragGestures(
                 },
                 onAxisAccepted = { axis ->
                     when (axis) {
-                        PlayerDragAxis.HORIZONTAL -> currentSeekSwipeGesturesEnabled && currentDuration > 0L
-                        PlayerDragAxis.VERTICAL -> currentIsFullscreen
+                        PlayerDragAxis.HORIZONTAL -> {
+                            shouldAcceptHorizontalSeekDrag(
+                                isSpeedBoostActive = isSpeedBoostActive.value,
+                                seekSwipeGesturesEnabled = currentSeekSwipeGesturesEnabled,
+                                durationMs = currentDuration,
+                            )
+                        }
+
+                        PlayerDragAxis.VERTICAL -> {
+                            currentIsFullscreen
+                        }
                     }
                 },
                 onDrag = { change, delta, axis ->

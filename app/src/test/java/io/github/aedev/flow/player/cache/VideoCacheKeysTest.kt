@@ -8,49 +8,63 @@ import io.mockk.mockk
 import org.junit.Test
 
 class VideoCacheKeysTest {
-    private var playing: String? = "first"
-    private val keys = VideoCacheKeys { playing }
-
-    private fun open(url: String): String {
+    private fun open(
+        videoId: String,
+        url: String,
+    ): String {
         val uri = mockk<Uri> { every { this@mockk.toString() } returns url }
-        return keys.buildCacheKey(DataSpec.Builder().setUri(uri).build())
+        return VideoCacheKeys(videoId).buildCacheKey(DataSpec.Builder().setUri(uri).build())
     }
 
     @Test
-    fun `keys are Media3's own and remembered under the video that opened them`() {
-        assertThat(open("https://example.com/a?itag=137")).isEqualTo("https://example.com/a?itag=137")
-        open("https://example.com/a?itag=140")
-        playing = "second"
-        open("https://example.com/b?itag=137")
+    fun `cache keys are stable for one video and isolated across videos`() {
+        val first = open("first", "https://example.com/shared")
+        val second = open("second", "https://example.com/shared")
 
-        assertThat(keys.takeKeys("first")).containsExactly("https://example.com/a?itag=137", "https://example.com/a?itag=140")
-        assertThat(keys.takeKeys("second")).containsExactly("https://example.com/b?itag=137")
+        assertThat(first).isEqualTo(open("first", "https://example.com/shared"))
+        assertThat(first).startsWith(VideoCacheKeys.prefixFor("first"))
+        assertThat(second).startsWith(VideoCacheKeys.prefixFor("second"))
+        assertThat(first).isNotEqualTo(second)
     }
 
     @Test
-    fun `taking a video's keys forgets them`() {
-        open("https://example.com/a")
-        keys.takeKeys("first")
+    fun `video cleanup ownership does not match another id or legacy shorts key`() {
+        val owned = open("video", "https://example.com/a")
+        val otherVideo = open("video-next", "https://example.com/a")
+        val legacyShortsKey = "https://example.com/a"
 
-        assertThat(keys.takeKeys("first")).isEmpty()
+        assertThat(VideoCacheKeys.belongsToVideo(owned, "video")).isTrue()
+        assertThat(VideoCacheKeys.belongsToVideo(otherVideo, "video")).isFalse()
+        assertThat(VideoCacheKeys.belongsToVideo(legacyShortsKey, "video")).isFalse()
+        assertThat(VideoCacheKeys.isSessionKey(owned)).isTrue()
+        assertThat(VideoCacheKeys.isSessionKey(legacyShortsKey)).isFalse()
     }
 
     @Test
-    fun `nothing is recorded while no video is playing`() {
-        playing = null
-        open("https://example.com/a")
+    fun `session remains active through pause and repeated loading of the same video`() {
+        val cleared = mutableListOf<String>()
+        val session = VideoCacheSession(cleared::add)
 
-        assertThat(keys.takeKeys("first")).isEmpty()
+        session.activate("first")
+        // Pause/resume does not close or rotate the cache session.
+        session.activate("first")
+
+        assertThat(session.currentVideoId()).isEqualTo("first")
+        assertThat(cleared).isEmpty()
     }
 
     @Test
-    fun `only the most recent videos are remembered`() {
-        repeat(9) { index ->
-            playing = "video$index"
-            open("https://example.com/$index")
-        }
+    fun `transition clears previous video and close clears the active video`() {
+        val cleared = mutableListOf<String>()
+        val session = VideoCacheSession(cleared::add)
 
-        assertThat(keys.takeKeys("video0")).isEmpty()
-        assertThat(keys.takeKeys("video8")).containsExactly("https://example.com/8")
+        session.activate("first")
+        session.activate("second")
+        assertThat(cleared).containsExactly("first").inOrder()
+        assertThat(session.currentVideoId()).isEqualTo("second")
+
+        session.close()
+        assertThat(cleared).containsExactly("first", "second").inOrder()
+        assertThat(session.currentVideoId()).isNull()
     }
 }

@@ -39,6 +39,7 @@ fun SettingsMenuDialog(
     initialPage: PlayerSettingsPage = PlayerSettingsPage.Main,
     onQualitySelected: (QualityOption) -> Unit = {},
     onAudioTrackSelected: (Int) -> Unit = {},
+    onAudioQualitySelected: (Int) -> Unit = {},
     onSpeedSelected: (Float) -> Unit = {},
     selectedSubtitleUrl: String? = null,
     onSubtitleSelected: (Int) -> Unit = {},
@@ -53,6 +54,14 @@ fun SettingsMenuDialog(
     onLoopToggle: (Boolean) -> Unit,
     ambientModeEnabled: Boolean = false,
     onAmbientModeToggle: (Boolean) -> Unit = {},
+    qualityLongPressAudioTracksEnabled: Boolean = true,
+    onQualityLongPressAudioTracksToggle: (Boolean) -> Unit = {},
+    edgeScrimDisabled: Boolean = false,
+    onEdgeScrimDisabledToggle: (Boolean) -> Unit = {},
+    hideCenterTransportControls: Boolean = false,
+    onHideCenterTransportControlsToggle: (Boolean) -> Unit = {},
+    miniPlayerLeftAligned: Boolean = true,
+    onMiniPlayerLeftAlignedToggle: (Boolean) -> Unit = {},
     onCastClick: () -> Unit = {},
     onPipClick: () -> Unit = {},
     onSleepTimerClick: () -> Unit = {},
@@ -140,6 +149,14 @@ fun SettingsMenuDialog(
                         autoplayEnabled = autoplayEnabled,
                         subtitlesEnabled = subtitlesEnabled,
                         ambientModeEnabled = ambientModeEnabled,
+                        qualityLongPressAudioTracksEnabled = qualityLongPressAudioTracksEnabled,
+                        onQualityLongPressAudioTracksToggle = onQualityLongPressAudioTracksToggle,
+                        edgeScrimDisabled = edgeScrimDisabled,
+                        onEdgeScrimDisabledToggle = onEdgeScrimDisabledToggle,
+                        hideCenterTransportControls = hideCenterTransportControls,
+                        onHideCenterTransportControlsToggle = onHideCenterTransportControlsToggle,
+                        miniPlayerLeftAligned = miniPlayerLeftAligned,
+                        onMiniPlayerLeftAlignedToggle = onMiniPlayerLeftAlignedToggle,
                         onNavigateToPage = { currentPage = it },
                         onShowSubtitleStyle = {
                             subtitleStyleReturnPage = PlayerSettingsPage.Main
@@ -167,9 +184,14 @@ fun SettingsMenuDialog(
                         currentQuality = playerState.currentQuality,
                         currentQualityKey = playerState.currentQualityKey,
                         useGroupedQualitySelector = useGroupedQualitySelector,
+                        availableAudioQualities = playerState.availableAudioQualities,
+                        currentAudioQuality = playerState.currentAudioQuality,
+                        showAudioQualityTabs = true,
                         onQualitySelected = {
                             onQualitySelected(it)
-                            sheetState.dismiss()
+                        },
+                        onAudioQualitySelected = {
+                            onAudioQualitySelected(it)
                         },
                     )
                 }

@@ -162,6 +162,7 @@ internal fun VideoStageControls(
             onBack = { playerSheetState.collapse() },
             onSettingsClick = { screenState.open(PlayerSheet.Settings()) },
             onQualityClick = { screenState.open(PlayerSheet.Settings(PlayerSettingsPage.Quality)) },
+            onQualityLongClick = { screenState.openAudioTracksFromQualityLongPress() },
             onSpeedClick = { screenState.open(PlayerSheet.Settings(PlayerSettingsPage.Speed)) },
             onFullscreenClick = { screenState.toggleFullscreen() },
             onResizeClick = {

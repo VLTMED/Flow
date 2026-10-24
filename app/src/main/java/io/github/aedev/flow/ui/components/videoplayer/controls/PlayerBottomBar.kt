@@ -1,6 +1,7 @@
 package io.github.aedev.flow.ui.components.videoplayer.controls
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,6 +33,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -46,23 +48,36 @@ import org.schabi.newpipe.extractor.stream.StreamSegment
 
 /** A tappable text pill on video: the playback speed and the current quality. */
 @Composable
-private fun PlayerLabelPill(
+internal fun PlayerLabelPill(
     label: String,
     onClick: () -> Unit,
     height: Dp,
+    onLongClick: (() -> Unit)? = null,
+    onLongClickLabel: String? = null,
 ) {
     val haptics = LocalHapticFeedback.current
     Surface(
-        onClick = {
-            haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-            onClick()
-        },
         color = PlayerScrimAffordance,
         shape = CircleShape,
         modifier =
             Modifier
                 .height(height)
-                .widthIn(min = height),
+                .widthIn(min = height)
+                .combinedClickable(
+                    role = Role.Button,
+                    onClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        onClick()
+                    },
+                    onLongClickLabel = onLongClickLabel,
+                    onLongClick =
+                        onLongClick?.let { action ->
+                            {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                action()
+                            }
+                        },
+                ),
     ) {
         Box(
             contentAlignment = Alignment.Center,
@@ -114,6 +129,8 @@ internal fun PlayerBottomBar(
     onScrubFinished: () -> Unit,
     isScrubbing: Boolean,
     hidePills: Boolean,
+    disableEdgeScrim: Boolean,
+    qualityLongPressAudioTracksEnabled: Boolean,
     modifier: Modifier = Modifier,
     isLayerVisible: () -> Boolean = { true },
 ) {
@@ -130,8 +147,11 @@ internal fun PlayerBottomBar(
         modifier =
             modifier
                 .fillMaxWidth()
-                .playerEdgeScrim(ScrimEdge.Bottom, PlayerScrim.copy(alpha = BOTTOM_BAR_SCRIM_ALPHA))
-                .padding(bottom = metrics.seekbarBottomPadding),
+                .playerEdgeScrim(
+                    edge = ScrimEdge.Bottom,
+                    color = PlayerScrim.copy(alpha = BOTTOM_BAR_SCRIM_ALPHA),
+                    disabled = disableEdgeScrim,
+                ).padding(bottom = metrics.seekbarBottomPadding),
     ) {
         Row(
             modifier =
@@ -225,6 +245,10 @@ internal fun PlayerBottomBar(
                         label = compactQualityLabel,
                         onClick = actions.onQualityClick,
                         height = metrics.pillHeight,
+                        onLongClick = actions.onQualityLongClick.takeIf { qualityLongPressAudioTracksEnabled },
+                        onLongClickLabel =
+                            stringResource(R.string.player_quality_audio_tracks_long_press_label)
+                                .takeIf { qualityLongPressAudioTracksEnabled },
                     )
                 }
 

@@ -11,12 +11,15 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
+import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.isOutOfBounds
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
 import io.github.aedev.flow.player.EnhancedPlayerManager
@@ -27,6 +30,7 @@ private val LongPressBottomExclusionFullscreen = 28.dp
 internal fun Modifier.playerTapGestures(
     isSpeedBoostActive: State<Boolean>,
     onSpeedBoostChange: State<(Boolean) -> Unit>,
+    onSpeedBoostSpeedChange: State<(Float) -> Unit>,
     showControls: State<Boolean>,
     onShowControlsChange: State<(Boolean) -> Unit>,
     onShowSeekBackChange: State<(Boolean) -> Unit>,
@@ -42,12 +46,14 @@ internal fun Modifier.playerTapGestures(
     longPressPlaybackSpeed: State<Float>,
     isSeekForwardActive: State<Boolean>,
     isSeekBackActive: State<Boolean>,
+    hideCenterTransportControls: State<Boolean>,
     sideEdgeIgnorePx: State<Float>,
     onTapWindowChange: State<(Boolean) -> Unit>,
     haptics: HapticFeedback,
 ): Modifier {
     val currentIsSpeedBoostActive by isSpeedBoostActive
     val currentOnSpeedBoostChange by onSpeedBoostChange
+    val currentOnSpeedBoostSpeedChange by onSpeedBoostSpeedChange
     val currentShowControls by showControls
     val currentOnShowControlsChange by onShowControlsChange
     val currentOnShowSeekBackChange by onShowSeekBackChange
@@ -63,6 +69,7 @@ internal fun Modifier.playerTapGestures(
     val currentLongPressPlaybackSpeed by longPressPlaybackSpeed
     val currentIsSeekForwardActive by isSeekForwardActive
     val currentIsSeekBackActive by isSeekBackActive
+    val currentHideCenterTransportControls by hideCenterTransportControls
     val currentSideEdgeIgnorePx by sideEdgeIgnorePx
     val currentOnTapWindowChange by onTapWindowChange
 
@@ -74,9 +81,11 @@ internal fun Modifier.playerTapGestures(
         var pendingForwardTargetMs: Long? = null
         var pendingBackTargetMs: Long? = null
         var speedBeforeLongPress: Float? = null
+        var speedBoostDragController: PlayerSpeedBoostDragController? = null
 
         var revealedOnTap = false
         var hidePending = false
+        var centerTapPending = false
 
         fun zoneOf(x: Float): TapZone =
             tapZoneOf(
@@ -148,12 +157,19 @@ internal fun Modifier.playerTapGestures(
             onTapUp = { offset ->
                 if (!currentIsSpeedBoostActive) {
                     val zone = zoneOf(offset.x)
+                    centerTapPending = false
                     val continuesActiveSeek =
                         (zone == TapZone.BACK && currentIsSeekBackActive) ||
                             (zone == TapZone.FORWARD && currentIsSeekForwardActive)
                     when {
                         continuesActiveSeek -> {
                             applyZoneSeek(forward = zone == TapZone.FORWARD)
+                        }
+
+                        zone == TapZone.CENTER && currentHideCenterTransportControls -> {
+                            centerTapPending = true
+                            hidePending = currentShowControls
+                            revealedOnTap = false
                         }
 
                         !currentShowControls -> {
@@ -170,11 +186,18 @@ internal fun Modifier.playerTapGestures(
                 }
             },
             onSingleTapConfirmed = {
-                if (hidePending) currentOnShowControlsChange(false)
+                if (centerTapPending) {
+                    togglePlayPause()
+                    if (hidePending) currentOnShowControlsChange(false)
+                } else if (hidePending) {
+                    currentOnShowControlsChange(false)
+                }
+                centerTapPending = false
                 hidePending = false
                 revealedOnTap = false
             },
             onDoubleTap = { offset ->
+                centerTapPending = false
                 hidePending = false
                 val zone = zoneOf(offset.x)
                 if (zone != TapZone.CENTER && revealedOnTap) {
@@ -190,36 +213,48 @@ internal fun Modifier.playerTapGestures(
                 }
             },
             onLongPress = { offset ->
-                if (currentLongPressPlaybackSpeed <= 0f) return@detectPlayerTaps
-
                 val bottomExclusion = if (currentIsFullscreen) LongPressBottomExclusionFullscreen else LongPressBottomExclusion
-                if (offset.y > size.height - bottomExclusion.toPx()) return@detectPlayerTaps
-
-                val manager = EnhancedPlayerManager.getInstance()
-                val player = manager.getPlayer()
-                if (player != null && !currentIsSpeedBoostActive) {
-                    val restoreSpeed =
-                        manager.playerState.value.playbackSpeed
-                            .takeIf { it > 0f }
-                            ?: player.playbackParameters.speed
-                    speedBeforeLongPress = restoreSpeed
-                    currentOnNormalSpeedChange(restoreSpeed)
-                    currentOnSpeedBoostChange(true)
-                    manager.setPlaybackSpeed(
-                        PlayerSpeedBoost.boostedPlaybackSpeed(
-                            currentSpeed = restoreSpeed,
-                            targetSpeed = currentLongPressPlaybackSpeed,
-                        ),
-                    )
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                if (currentLongPressPlaybackSpeed <= 0f || offset.y > size.height - bottomExclusion.toPx()) {
+                    false
+                } else {
+                    val manager = EnhancedPlayerManager.getInstance()
+                    val player = manager.getPlayer()
+                    if (player != null && !currentIsSpeedBoostActive) {
+                        val restoreSpeed =
+                            manager.playerState.value.playbackSpeed
+                                .takeIf { it > 0f }
+                                ?: player.playbackParameters.speed
+                        val boostSpeed = PlayerSpeedBoost.longPressSpeed(currentLongPressPlaybackSpeed)
+                        speedBeforeLongPress = restoreSpeed
+                        speedBoostDragController =
+                            PlayerSpeedBoostDragController(
+                                baseSpeed = boostSpeed,
+                                stepDistancePx = with(this) { 48.dp.toPx() },
+                            ) { speed ->
+                                manager.setPlaybackSpeed(speed)
+                                currentOnSpeedBoostSpeedChange(speed)
+                                haptics.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick)
+                            }
+                        currentOnNormalSpeedChange(restoreSpeed)
+                        currentOnSpeedBoostSpeedChange(boostSpeed)
+                        currentOnSpeedBoostChange(true)
+                        manager.setPlaybackSpeed(boostSpeed)
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        true
+                    } else {
+                        false
+                    }
                 }
             },
+            onLongPressDrag = { deltaX -> speedBoostDragController?.dragBy(deltaX) },
             onLongPressReleased = {
                 val restoreSpeed = speedBeforeLongPress
                 if (restoreSpeed != null) {
                     EnhancedPlayerManager.getInstance().setPlaybackSpeed(restoreSpeed)
                     currentOnNormalSpeedChange(restoreSpeed)
+                    currentOnSpeedBoostSpeedChange(restoreSpeed)
                     speedBeforeLongPress = null
+                    speedBoostDragController = null
                     currentOnSpeedBoostChange(false)
                     haptics.performHapticFeedback(HapticFeedbackType.GestureEnd)
                 }
@@ -253,7 +288,8 @@ private suspend fun PointerInputScope.detectPlayerTaps(
     onTapUp: (Offset) -> Unit,
     onSingleTapConfirmed: () -> Unit,
     onDoubleTap: (Offset) -> Unit,
-    onLongPress: (Offset) -> Unit,
+    onLongPress: (Offset) -> Boolean,
+    onLongPressDrag: (Float) -> Unit,
     onLongPressReleased: () -> Unit,
 ) {
     awaitEachGesture {
@@ -267,8 +303,12 @@ private suspend fun PointerInputScope.detectPlayerTaps(
                 try {
                     withTimeout(viewConfiguration.longPressTimeoutMillis) { awaitStillUp(down) }
                 } catch (_: PointerEventTimeoutCancellationException) {
-                    onLongPress(down.position)
-                    waitForUpOrCancellation()
+                    val speedBoostStarted = onLongPress(down.position)
+                    if (speedBoostStarted) {
+                        awaitLongPressSpeedDrag(down.id, onLongPressDrag)
+                    } else {
+                        waitForUpOrCancellation()
+                    }
                     onLongPressReleased()
                     return@awaitEachGesture
                 }
@@ -297,6 +337,22 @@ private suspend fun PointerInputScope.detectPlayerTaps(
         }
 
         onDoubleTap(secondUp.position)
+    }
+}
+
+/** While the held boost is active, horizontal movement is consumed here rather than becoming a seek. */
+private suspend fun AwaitPointerEventScope.awaitLongPressSpeedDrag(
+    pointerId: PointerId,
+    onHorizontalDrag: (Float) -> Unit,
+) {
+    while (true) {
+        val event = awaitPointerEvent(PointerEventPass.Initial)
+        val change = event.changes.firstOrNull { it.id == pointerId } ?: return
+        if (change.changedToUp() || !change.pressed) return
+
+        val deltaX = change.positionChange().x
+        if (deltaX != 0f) onHorizontalDrag(deltaX)
+        change.consume()
     }
 }
 

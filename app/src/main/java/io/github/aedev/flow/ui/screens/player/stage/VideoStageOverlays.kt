@@ -33,7 +33,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.github.aedev.flow.R
 import io.github.aedev.flow.ui.components.videoplayer.UpcomingVideoOverlay
-import io.github.aedev.flow.ui.components.videoplayer.gesture.PlayerSpeedBoost
 import io.github.aedev.flow.ui.components.videoplayer.overlay.PlayerGestureOverlays
 import io.github.aedev.flow.ui.components.videoplayer.overlay.cutoutTopInset
 import io.github.aedev.flow.ui.theme.PlayerScrim
@@ -59,11 +58,7 @@ internal fun BoxScope.VideoStageOverlays(session: VideoPlayerStageSession) {
         style = prefs.gestureOverlayStyle,
         seekZoneFraction = prefs.doubleTapSeekZone.sideFraction,
         speedSwipeSide = prefs.speedSwipeSide,
-        speedBoostSpeed =
-            PlayerSpeedBoost.boostedPlaybackSpeed(
-                currentSpeed = screenState.normalSpeed,
-                targetSpeed = prefs.longPressPlaybackSpeed,
-            ),
+        speedBoostSpeed = screenState.speedBoostSpeed,
     )
 
     AnimatedVisibility(

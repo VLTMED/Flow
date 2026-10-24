@@ -41,6 +41,8 @@ class PlayerFactory {
         val maxBufferMs: Int,
         val bufferForPlaybackMs: Int,
         val bufferRebufferMs: Int,
+        val videoBufferMemoryMb: Int,
+        val videoBackBufferMs: Int,
         val playDuringCalls: Boolean,
     )
 
@@ -57,6 +59,8 @@ class PlayerFactory {
                     maxBufferMs = prefs.maxBufferMs.first(),
                     bufferForPlaybackMs = prefs.bufferForPlaybackMs.first(),
                     bufferRebufferMs = prefs.bufferForPlaybackAfterRebufferMs.first(),
+                    videoBufferMemoryMb = prefs.videoBufferMemoryMb.first(),
+                    videoBackBufferMs = prefs.videoBackBufferMs.first(),
                     playDuringCalls = prefs.playDuringCalls.first(),
                 )
             }
@@ -74,8 +78,14 @@ class PlayerFactory {
                 maxBufferMs = prefs.maxBufferMs.first(),
                 bufferForPlaybackMs = prefs.bufferForPlaybackMs.first(),
                 bufferRebufferMs = prefs.bufferForPlaybackAfterRebufferMs.first(),
+                videoBufferMemoryMb = prefs.videoBufferMemoryMb.first(),
+                videoBackBufferMs = prefs.videoBackBufferMs.first(),
                 playDuringCalls = prefs.playDuringCalls.first(),
             )
+    }
+
+    fun invalidateCachedPreferences() {
+        cachedPrefs = null
     }
 
     fun createBandwidthMeter(context: Context): DefaultBandwidthMeter =
@@ -129,6 +139,8 @@ class PlayerFactory {
             maxMs = prefs.maxBufferMs,
             playbackMs = prefs.bufferForPlaybackMs,
             rebufferMs = prefs.bufferRebufferMs,
+            memoryBudgetMb = prefs.videoBufferMemoryMb,
+            backBufferMs = prefs.videoBackBufferMs,
         )
     }
 

@@ -3,6 +3,7 @@ package io.github.aedev.flow.ui.screens.settings.playback
 import dagger.hilt.android.lifecycle.HiltViewModel
 import io.github.aedev.flow.data.local.BufferProfile
 import io.github.aedev.flow.data.local.PlayerPreferences
+import io.github.aedev.flow.player.config.PlayerConfig
 import io.github.aedev.flow.ui.screens.settings.SettingsViewModel
 import javax.inject.Inject
 
@@ -18,6 +19,8 @@ class BufferSettingsViewModel
         val maxBufferMs = preferences.maxBufferMs.asState(BufferProfile.STABLE.maxBuffer)
         val startBufferMs = preferences.bufferForPlaybackMs.asState(BufferProfile.STABLE.playbackBuffer)
         val rebufferMs = preferences.bufferForPlaybackAfterRebufferMs.asState(BufferProfile.STABLE.rebufferBuffer)
+        val videoBufferMemoryMb = preferences.videoBufferMemoryMb.asState(0)
+        val videoBackBufferMs = preferences.videoBackBufferMs.asState(PlayerConfig.BACK_BUFFER_DURATION_MS)
 
         fun setProfile(value: BufferProfile) =
             write {
@@ -30,13 +33,6 @@ class BufferSettingsViewModel
                 }
             }
 
-        /** Keeps the maximum at or above the minimum, so the player never receives an inverted pair. */
-        fun setMinBuffer(ms: Int) =
-            write {
-                preferences.setMinBufferMs(ms)
-                if (maxBufferMs.value < ms) preferences.setMaxBufferMs(ms)
-            }
-
         fun setMaxBuffer(ms: Int) =
             write {
                 preferences.setMaxBufferMs(ms)
@@ -46,4 +42,8 @@ class BufferSettingsViewModel
         fun setStartBuffer(ms: Int) = write { preferences.setBufferForPlaybackMs(ms) }
 
         fun setRebuffer(ms: Int) = write { preferences.setBufferForPlaybackAfterRebufferMs(ms) }
+
+        fun setVideoBufferMemoryMb(megabytes: Int) = write { preferences.setVideoBufferMemoryMb(megabytes) }
+
+        fun setVideoBackBufferMs(ms: Int) = write { preferences.setVideoBackBufferMs(ms) }
     }

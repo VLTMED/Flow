@@ -65,6 +65,26 @@ internal object QualityIndex {
             keywords = R.string.settings_keywords_thumbnails,
         )
     val music = entry("music", R.string.music_quality_header, SettingsTabs.QUALITY_MUSIC, R.string.settings_quality_tab_music)
+    val musicAudioCodec =
+        entry(
+            "music.audio_codec",
+            R.string.audio_codec_preference,
+            SettingsTabs.QUALITY_MUSIC,
+            R.string.music_quality_header,
+            keywords = R.string.settings_keywords_codec,
+        )
 
-    val all = listOf(videoWifi, videoMobile, codec, fallbackCodec, thumbnailsWifi, thumbnailsMobile, shortsWifi, shortsMobile, music)
+    val all =
+        listOf(
+            videoWifi,
+            videoMobile,
+            codec,
+            fallbackCodec,
+            thumbnailsWifi,
+            thumbnailsMobile,
+            shortsWifi,
+            shortsMobile,
+            music,
+            musicAudioCodec,
+        )
 }

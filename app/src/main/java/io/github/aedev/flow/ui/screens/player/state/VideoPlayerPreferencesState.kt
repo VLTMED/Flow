@@ -46,6 +46,8 @@ internal class VideoPlayerPreferencesState(
     val rememberPlaybackSpeed: Boolean,
     val ambientModeEnabled: Boolean,
     val adaptivePlayerSizeEnabled: Boolean,
+    val miniPlayerLeftAligned: Boolean,
+    val hideCenterTransportControls: Boolean,
     val groupedQualitySelectorEnabled: Boolean,
     val lockModeEnabled: Boolean,
     val commentsEnabled: Boolean,
@@ -83,6 +85,8 @@ internal fun rememberVideoPlayerPreferences(context: Context): VideoPlayerPrefer
     val rememberPlaybackSpeed by playerPreferences.rememberPlaybackSpeed.collectAsState(initial = false)
     val ambientModeEnabled by playerPreferences.videoAmbientModeEnabled.collectAsState(initial = false)
     val adaptivePlayerSizeEnabled by playerPreferences.adaptivePlayerSizeEnabled.collectAsState(initial = true)
+    val miniPlayerLeftAligned by playerPreferences.miniPlayerLeftAligned.collectAsState(initial = true)
+    val hideCenterTransportControls by playerPreferences.overlayHideCenterTransportControls.collectAsState(initial = false)
     val groupedQualitySelectorEnabled by playerPreferences.groupedQualitySelectorEnabled.collectAsState(initial = false)
     val lockModeEnabled by playerPreferences.overlayLockModeEnabled.collectAsState(initial = false)
     val commentsEnabled by playerPreferences.commentsEnabled.collectAsState(initial = true)
@@ -118,6 +122,8 @@ internal fun rememberVideoPlayerPreferences(context: Context): VideoPlayerPrefer
         rememberPlaybackSpeed = rememberPlaybackSpeed,
         ambientModeEnabled = ambientModeEnabled,
         adaptivePlayerSizeEnabled = adaptivePlayerSizeEnabled,
+        miniPlayerLeftAligned = miniPlayerLeftAligned,
+        hideCenterTransportControls = hideCenterTransportControls,
         groupedQualitySelectorEnabled = groupedQualitySelectorEnabled,
         lockModeEnabled = lockModeEnabled,
         commentsEnabled = commentsEnabled,

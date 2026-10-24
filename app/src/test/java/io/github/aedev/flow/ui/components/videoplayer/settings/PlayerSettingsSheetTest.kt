@@ -11,6 +11,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -23,6 +24,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import io.github.aedev.flow.R
+import io.github.aedev.flow.player.AudioTrackOption
 import io.github.aedev.flow.player.state.EnhancedPlayerState
 import io.github.aedev.flow.player.state.QualityOption
 import io.github.aedev.flow.ui.components.videoplayer.subtitle.SubtitleStyle
@@ -55,7 +57,9 @@ class PlayerSettingsSheetTest {
     private class Callbacks {
         var dismissed = false
         var quality: QualityOption? = null
+        var audioQuality: Int? = null
         var audioTrack: Int? = null
+        var qualityAudioTrackShortcut: Boolean? = null
         var speed: Float? = null
         var subtitlesDisabled = false
         var sleepTimer = false
@@ -67,6 +71,8 @@ class PlayerSettingsSheetTest {
         playerState: EnhancedPlayerState = fakePlayerState(),
         subtitlesEnabled: Boolean = false,
         enableVerticalDismiss: Boolean = true,
+        useGroupedQualitySelector: Boolean = false,
+        qualityAudioTrackShortcutEnabled: Boolean = true,
     ): Callbacks {
         val callbacks = Callbacks()
         rule.setContent {
@@ -79,6 +85,7 @@ class PlayerSettingsSheetTest {
                     initialPage = initialPage,
                     onQualitySelected = { callbacks.quality = it },
                     onAudioTrackSelected = { callbacks.audioTrack = it },
+                    onAudioQualitySelected = { callbacks.audioQuality = it },
                     onSpeedSelected = { callbacks.speed = it },
                     onDisableSubtitles = { callbacks.subtitlesDisabled = true },
                     onAutoplayToggle = {},
@@ -87,8 +94,11 @@ class PlayerSettingsSheetTest {
                     subtitleStyle = SubtitleStyle(),
                     onSubtitleStyleChange = {},
                     onLoopToggle = {},
+                    qualityLongPressAudioTracksEnabled = qualityAudioTrackShortcutEnabled,
+                    onQualityLongPressAudioTracksToggle = { callbacks.qualityAudioTrackShortcut = it },
                     onCastClick = { callbacks.cast = true },
                     onSleepTimerClick = { callbacks.sleepTimer = true },
+                    useGroupedQualitySelector = useGroupedQualitySelector,
                     enableVerticalDismiss = enableVerticalDismiss,
                 )
             }
@@ -108,6 +118,7 @@ class PlayerSettingsSheetTest {
             R.string.playback_speed,
             R.string.audio_settings_title,
             R.string.audio_track,
+            R.string.player_quality_audio_tracks_long_press_title,
             R.string.captions,
             R.string.filter_subtitles,
             R.string.subtitle_style,
@@ -147,7 +158,36 @@ class PlayerSettingsSheetTest {
         rule.waitForIdle()
 
         assertThat(callbacks.quality).isEqualTo(FIXTURE_QUALITY_720)
-        assertThat(callbacks.dismissed).isTrue()
+        assertThat(callbacks.dismissed).isFalse()
+    }
+
+    @Test
+    fun qualityTabsSwitchListsAndAudioRowsReportTheirActualTrackIndex() {
+        val state =
+            fakePlayerState().copy(
+                availableAudioQualities =
+                    listOf(
+                        AudioTrackOption(index = 0, label = "English", language = "English", bitrate = 128_000, codecKey = "aac"),
+                        AudioTrackOption(index = 1, label = "English", language = "English", bitrate = 96_000, codecKey = "unknown"),
+                    ),
+                currentAudioQuality = 0,
+            )
+        val callbacks = setMenu(initialPage = PlayerSettingsPage.Quality, playerState = state, useGroupedQualitySelector = true)
+
+        rule.onNodeWithText(string(R.string.player_quality_tab_picture)).assertIsSelected()
+        rule.onNodeWithText("720p").assertExists()
+        rule.onNodeWithText(string(R.string.player_quality_tab_audio)).performClick()
+        rule.onNodeWithText("AAC · 128 kbps").assertExists()
+        rule.onNodeWithText("96 kbps").assertExists()
+        rule.onAllNodesWithText("Opus").assertCountEquals(0)
+
+        rule.onNodeWithText("96 kbps").performScrollTo().performClick()
+        rule.waitForIdle()
+
+        assertThat(callbacks.audioQuality).isEqualTo(1)
+        assertThat(callbacks.dismissed).isFalse()
+        rule.onNodeWithText(string(R.string.player_quality_tab_picture)).performClick()
+        rule.onNodeWithText("720p").assertExists()
     }
 
     @Test
@@ -155,12 +195,22 @@ class PlayerSettingsSheetTest {
         val callbacks = setMenu(initialPage = PlayerSettingsPage.Audio)
 
         rule.onNodeWithText(string(R.string.audio_track)).assertIsDisplayed()
+        rule.onAllNodesWithText(string(R.string.player_quality_tab_audio)).assertCountEquals(0)
         rule.onNodeWithText("English").assertExists()
 
         rule.onNodeWithText("Deutsch").performScrollTo().performClick()
         rule.waitForIdle()
 
         assertThat(callbacks.audioTrack).isEqualTo(1)
+    }
+
+    @Test
+    fun audioPageExplainsWhenNoLanguageTracksAreAvailable() {
+        val state = fakePlayerState().copy(availableAudioTracks = emptyList())
+        setMenu(initialPage = PlayerSettingsPage.Audio, playerState = state)
+
+        rule.onNodeWithText(string(R.string.player_audio_tracks_unavailable)).assertIsDisplayed()
+        rule.onAllNodesWithText("English").assertCountEquals(0)
     }
 
     @Test
@@ -206,6 +256,21 @@ class PlayerSettingsSheetTest {
             .onNode(hasText(string(R.string.loop_video)) and hasRole(Role.Switch))
             .performScrollTo()
             .assertIsOff()
+    }
+
+    @Test
+    fun qualityAudioTracksShortcutSettingIsAnEnabledSwitchAndReportsChanges() {
+        val callbacks = setMenu(qualityAudioTrackShortcutEnabled = true)
+        val shortcut =
+            rule
+                .onNode(
+                    hasText(string(R.string.player_quality_audio_tracks_long_press_title)) and hasRole(Role.Switch),
+                ).performScrollTo()
+
+        shortcut.assertIsOn().performClick()
+        rule.waitForIdle()
+
+        assertThat(callbacks.qualityAudioTrackShortcut).isFalse()
     }
 
     @Test

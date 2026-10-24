@@ -70,6 +70,7 @@ internal fun VideoStage(
                 .videoPlayerControls(
                     isSpeedBoostActive = screenState.isSpeedBoostActive,
                     onSpeedBoostChange = { screenState.isSpeedBoostActive = it },
+                    onSpeedBoostSpeedChange = { screenState.speedBoostSpeed = it },
                     showControls = screenState.showControls,
                     onShowControlsChange = { screenState.showControls = it },
                     onShowSeekBackChange = { screenState.showSeekBackAnimation = it },
@@ -132,6 +133,7 @@ internal fun VideoStage(
                     onExitFullscreenDrag = { offsetPx -> screenState.exitDragOffsetY = offsetPx },
                     isSeekForwardActive = screenState.showSeekForwardAnimation,
                     isSeekBackActive = screenState.showSeekBackAnimation,
+                    hideCenterTransportControls = prefs.hideCenterTransportControls,
                     onTapWindowChange = { screenState.isTapWindowOpen = it },
                 ).videoPlayerZoom(
                     scope = scope,

@@ -23,6 +23,7 @@ private val MinSideEdgeIgnore = 24.dp
 fun Modifier.videoPlayerControls(
     isSpeedBoostActive: Boolean,
     onSpeedBoostChange: (Boolean) -> Unit,
+    onSpeedBoostSpeedChange: (Float) -> Unit = {},
     showControls: Boolean,
     onShowControlsChange: (Boolean) -> Unit,
     onShowSeekBackChange: (Boolean) -> Unit,
@@ -60,10 +61,12 @@ fun Modifier.videoPlayerControls(
     onExitFullscreenDrag: (offsetPx: Float) -> Unit = {},
     isSeekForwardActive: Boolean = false,
     isSeekBackActive: Boolean = false,
+    hideCenterTransportControls: Boolean = false,
     onTapWindowChange: (Boolean) -> Unit = {},
 ): Modifier {
     val isSpeedBoostActiveState = rememberUpdatedState(isSpeedBoostActive)
     val onSpeedBoostChangeState = rememberUpdatedState(onSpeedBoostChange)
+    val onSpeedBoostSpeedChangeState = rememberUpdatedState(onSpeedBoostSpeedChange)
     val showControlsState = rememberUpdatedState(showControls)
     val onShowControlsChangeState = rememberUpdatedState(onShowControlsChange)
     val onShowSeekBackChangeState = rememberUpdatedState(onShowSeekBackChange)
@@ -100,6 +103,7 @@ fun Modifier.videoPlayerControls(
     val onExitFullscreenDragState = rememberUpdatedState(onExitFullscreenDrag)
     val isSeekForwardActiveState = rememberUpdatedState(isSeekForwardActive)
     val isSeekBackActiveState = rememberUpdatedState(isSeekBackActive)
+    val hideCenterTransportControlsState = rememberUpdatedState(hideCenterTransportControls)
     val onTapWindowChangeState = rememberUpdatedState(onTapWindowChange)
 
     // The width the system itself reserves for the back gesture, so the player's dead zones match
@@ -127,6 +131,7 @@ fun Modifier.videoPlayerControls(
         .playerTapGestures(
             isSpeedBoostActive = isSpeedBoostActiveState,
             onSpeedBoostChange = onSpeedBoostChangeState,
+            onSpeedBoostSpeedChange = onSpeedBoostSpeedChangeState,
             showControls = showControlsState,
             onShowControlsChange = onShowControlsChangeState,
             onShowSeekBackChange = onShowSeekBackChangeState,
@@ -142,12 +147,14 @@ fun Modifier.videoPlayerControls(
             longPressPlaybackSpeed = longPressPlaybackSpeedState,
             isSeekForwardActive = isSeekForwardActiveState,
             isSeekBackActive = isSeekBackActiveState,
+            hideCenterTransportControls = hideCenterTransportControlsState,
             sideEdgeIgnorePx = sideEdgeIgnorePxState,
             onTapWindowChange = onTapWindowChangeState,
             haptics = haptics,
         ).playerDragGestures(
             currentPosition = currentPositionState,
             duration = durationState,
+            isSpeedBoostActive = isSpeedBoostActiveState,
             scope = scope,
             isFullscreen = isFullscreenState,
             onBrightnessChange = onBrightnessChangeState,

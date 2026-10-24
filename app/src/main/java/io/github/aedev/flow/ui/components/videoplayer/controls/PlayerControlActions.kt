@@ -11,6 +11,7 @@ internal data class PlayerControlActions(
     val onBack: () -> Unit = {},
     val onSettingsClick: () -> Unit = {},
     val onQualityClick: () -> Unit = {},
+    val onQualityLongClick: () -> Unit = {},
     val onSpeedClick: () -> Unit = {},
     val onFullscreenClick: () -> Unit = {},
     val onResizeClick: () -> Unit = {},

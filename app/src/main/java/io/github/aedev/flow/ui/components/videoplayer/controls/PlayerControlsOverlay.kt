@@ -35,6 +35,19 @@ private val OverlayActionIconInset = (OverlayActionButtonSize - OverlayActionIco
 /** Tint over the video while the controls are up; the loading state blacks it out entirely. */
 private const val CONTROLS_BACKDROP_ALPHA = 0.24f
 
+internal fun playerControlsBackdropColor(
+    isTouchLocked: Boolean,
+    isInitialLoading: Boolean,
+    shadingDisabled: Boolean,
+    fadeAlpha: Float,
+): Color =
+    when {
+        isTouchLocked -> Color.Transparent
+        isInitialLoading -> PlayerScrim
+        shadingDisabled -> Color.Transparent
+        else -> PlayerScrim.copy(alpha = CONTROLS_BACKDROP_ALPHA * fadeAlpha)
+    }
+
 /**
  * The on-video controls.
  *
@@ -94,6 +107,8 @@ internal fun PlayerControlsOverlay(
     val overlayPreferences by playerPreferences.overlayPreferences.collectAsStateWithLifecycle(
         initialValue = remember { PlayerOverlayPreferences() },
     )
+    val qualityLongPressAudioTracksEnabled by playerPreferences.qualityButtonAudioTracksLongPressEnabled
+        .collectAsStateWithLifecycle(initialValue = true)
     val sponsorSegmentColors =
         remember(overlayPreferences.sponsorCategoryColors) {
             overlayPreferences.sponsorCategoryColors.mapValues { (_, argb) -> Color(argb) }
@@ -251,16 +266,20 @@ internal fun PlayerControlsOverlay(
                         }
                     }.drawBehind {
                         drawRect(
-                            when {
-                                state.isTouchLocked -> Color.Transparent
-                                isInitialLoading -> PlayerScrim
-                                else -> PlayerScrim.copy(alpha = CONTROLS_BACKDROP_ALPHA * uncleared.value)
-                            },
+                            playerControlsBackdropColor(
+                                isTouchLocked = state.isTouchLocked,
+                                isInitialLoading = isInitialLoading,
+                                shadingDisabled = overlayPreferences.edgeScrimDisabled,
+                                fadeAlpha = uncleared.value,
+                            ),
                         )
                     },
         ) {
             if (isPortraitFullscreen && !state.isTouchLocked) {
-                PortraitFullscreenEdgeScrims(modifier = Modifier.matchParentSize())
+                PortraitFullscreenEdgeScrims(
+                    disabled = overlayPreferences.edgeScrimDisabled,
+                    modifier = Modifier.matchParentSize(),
+                )
             }
             if (state.isTouchLocked) {
                 PlayerLockedControls(
@@ -320,7 +339,7 @@ internal fun PlayerControlsOverlay(
                 }
 
                 AnimatedVisibility(
-                    visible = !isCleared,
+                    visible = !isCleared && !overlayPreferences.hideCenterTransportControls,
                     enter = fadeIn(fadeSpec),
                     exit = fadeOut(fadeSpec),
                     modifier = Modifier.align(Alignment.Center),
@@ -366,6 +385,8 @@ internal fun PlayerControlsOverlay(
                         onScrubFinished = onScrubFinished,
                         isScrubbing = scrubController.isScrubbing,
                         hidePills = isCleared,
+                        disableEdgeScrim = overlayPreferences.edgeScrimDisabled,
+                        qualityLongPressAudioTracksEnabled = qualityLongPressAudioTracksEnabled,
                         isLayerVisible = isLayerOnScreen,
                         modifier = Modifier.align(Alignment.BottomCenter),
                     )

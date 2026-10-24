@@ -1,6 +1,7 @@
 package io.github.aedev.flow.player.stream
 
 import android.util.Log
+import io.github.aedev.flow.data.local.AudioCodecPreference
 import io.github.aedev.flow.data.local.PlayerPreferences
 import io.github.aedev.flow.data.local.VideoQuality
 import io.github.aedev.flow.data.local.ViewHistory
@@ -20,15 +21,17 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 
-/** The three preference reads every stream resolution needs. */
+/** The preferences needed to resolve and select the stream for one playback request. */
 internal data class StreamPreferences(
     val quality: VideoQuality,
     val audioLanguage: String,
+    val audioCodecPreference: AudioCodecPreference,
     val codecKey: String,
     val subtitleLanguage: String,
 )
@@ -185,6 +188,7 @@ class PlaybackLoadResolver
                         relatedVideos = relatedVideos,
                         preferredQuality = preferences.quality,
                         preferredAudioLanguage = preferences.audioLanguage,
+                        preferredAudioCodec = preferences.audioCodecPreference,
                         preferredCodecKey = preferences.codecKey,
                         preferredSubtitleLanguage = preferences.subtitleLanguage,
                         resumePositionOverrideMs = request.resumePositionOverrideMs,
@@ -244,6 +248,7 @@ class PlaybackLoadResolver
                         playerPreferences.defaultQualityCellular.first()
                     },
                 audioLanguage = playerPreferences.preferredAudioLanguage.first(),
+                audioCodecPreference = playerPreferences.audioCodecPreference.firstOrNull() ?: AudioCodecPreference.AUTO,
                 codecKey = playerPreferences.videoCodecPriority.first(),
                 subtitleLanguage = playerPreferences.preferredSubtitleLanguage.first(),
             )

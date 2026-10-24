@@ -64,6 +64,10 @@ internal fun PlayerSettingsSheetHost(
     val sponsorSegments by playerManager.sponsorSegments.collectAsState()
     val sponsorBlockOffForVideo by playerManager.sponsorBlockOffForVideo.collectAsState()
     val sponsorBlockEnabled by playerPreferences.sponsorBlockEnabled.collectAsState(initial = false)
+    val edgeScrimDisabled by playerPreferences.overlayEdgeScrimDisabled.collectAsState(initial = false)
+    val hideCenterTransportControls by playerPreferences.overlayHideCenterTransportControls.collectAsState(initial = false)
+    val miniPlayerLeftAligned by playerPreferences.miniPlayerLeftAligned.collectAsState(initial = true)
+    val qualityLongPressAudioTracksEnabled by playerPreferences.qualityButtonAudioTracksLongPressEnabled.collectAsState(initial = true)
     val videoNotesEnabled by viewModel.videoNotesEnabled.collectAsState()
     val subtitleFilePicker =
         rememberLauncherForActivityResult(OpenSubtitleFile()) { uri ->
@@ -99,6 +103,7 @@ internal fun PlayerSettingsSheetHost(
                     )
                 }
         },
+        onAudioQualitySelected = playerManager::switchAudioQuality,
         onSpeedSelected = { speed ->
             EnhancedPlayerManager.getInstance().setPlaybackSpeed(speed)
             screenState.normalSpeed = speed
@@ -135,6 +140,16 @@ internal fun PlayerSettingsSheetHost(
         onLoopToggle = { viewModel.toggleLoop(it) },
         ambientModeEnabled = ambientModeEnabled,
         onAmbientModeToggle = { scope.launch { playerPreferences.setVideoAmbientModeEnabled(it) } },
+        qualityLongPressAudioTracksEnabled = qualityLongPressAudioTracksEnabled,
+        onQualityLongPressAudioTracksToggle = {
+            scope.launch { playerPreferences.setQualityButtonAudioTracksLongPressEnabled(it) }
+        },
+        edgeScrimDisabled = edgeScrimDisabled,
+        onEdgeScrimDisabledToggle = { scope.launch { playerPreferences.setOverlayEdgeScrimDisabled(it) } },
+        hideCenterTransportControls = hideCenterTransportControls,
+        onHideCenterTransportControlsToggle = { scope.launch { playerPreferences.setOverlayHideCenterTransportControls(it) } },
+        miniPlayerLeftAligned = miniPlayerLeftAligned,
+        onMiniPlayerLeftAlignedToggle = { scope.launch { playerPreferences.setMiniPlayerLeftAligned(it) } },
         onCastClick = {
             DlnaCastManager.startDiscovery(context)
             screenState.open(PlayerSheet.Dlna)

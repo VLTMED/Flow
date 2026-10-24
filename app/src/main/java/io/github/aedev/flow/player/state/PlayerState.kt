@@ -11,9 +11,11 @@ data class EnhancedPlayerState(
     val effectiveQuality: Int = 0,
     val currentQualityKey: String? = null,
     val currentAudioTrack: Int = 0,
+    val currentAudioQuality: Int = -1,
     val sourceVideoAspectRatio: Float? = null,
     val availableQualities: List<QualityOption> = emptyList(),
     val availableAudioTracks: List<AudioTrackOption> = emptyList(),
+    val availableAudioQualities: List<AudioTrackOption> = emptyList(),
     val availableSubtitles: List<SubtitleOption> = emptyList(),
     /** The [SubtitleOption.url] of the track on screen, or null when captions are off. */
     val selectedSubtitleUrl: String? = null,
@@ -58,6 +60,7 @@ data class AudioTrackOption(
     val label: String,
     val language: String,
     val bitrate: Long,
+    val codecKey: String = "",
 )
 
 /** Where a subtitle track lives, which the picker names under the track. */

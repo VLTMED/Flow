@@ -73,6 +73,7 @@ internal class PlaybackSettingsController(
                     quality = quality,
                     preferredAudioLanguage = playerPreferences.preferredAudioLanguage.first(),
                     preferredCodecKey = playerPreferences.videoCodecPriority.first(),
+                    preferredAudioCodec = playerPreferences.audioCodecPreference.first(),
                 )
 
             uiState.value = state.applySelectedQuality(quality, streams.first, streams.second)

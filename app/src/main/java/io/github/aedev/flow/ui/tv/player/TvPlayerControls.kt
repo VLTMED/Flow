@@ -93,6 +93,7 @@ internal class TvPlayerUtilityActions(
 @Composable
 internal fun BoxScope.TvPlayerControls(
     visible: Boolean,
+    edgeScrimDisabled: Boolean,
     video: Video,
     isPlaying: Boolean,
     isBuffering: Boolean,
@@ -129,8 +130,11 @@ internal fun BoxScope.TvPlayerControls(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .playerEdgeScrim(ScrimEdge.Bottom, PlayerScrimEdgeGradient)
-                    .padding(
+                    .playerEdgeScrim(
+                        edge = ScrimEdge.Bottom,
+                        color = PlayerScrimEdgeGradient,
+                        disabled = edgeScrimDisabled,
+                    ).padding(
                         start = dimens.overscanHorizontal,
                         end = dimens.overscanHorizontal,
                         top = if (upNextShown) UpNextLeadIn else ScrimLeadIn,

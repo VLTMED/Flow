@@ -1,5 +1,6 @@
 package io.github.aedev.flow.player.stream
 
+import io.github.aedev.flow.data.local.AudioCodecPreference
 import io.github.aedev.flow.data.local.MusicAudioQuality
 import org.schabi.newpipe.extractor.stream.AudioStream
 import org.schabi.newpipe.extractor.stream.AudioTrackType
@@ -12,6 +13,7 @@ object AudioStreamSelector {
         preferredAudioLanguage: String,
         preferredMusicAudioQuality: MusicAudioQuality = MusicAudioQuality.AUTO,
         compatibilityFilter: ((AudioStream) -> Boolean)? = null,
+        preferredCodecPreference: AudioCodecPreference = AudioCodecPreference.AUTO,
     ): AudioStream? {
         if (streams.isEmpty()) return null
 
@@ -21,7 +23,20 @@ object AudioStreamSelector {
                 ?: streams
 
         val preferredCandidates = preferredCandidates(compatibleStreams, preferredAudioLanguage)
-        return selectByQuality(preferredCandidates, preferredMusicAudioQuality)
+        val codecCandidates =
+            if (preferredCodecPreference == AudioCodecPreference.AUTO) {
+                preferredCandidates
+            } else {
+                preferredCandidates
+                    .filter { stream ->
+                        AudioCodecPreference.matches(
+                            preference = preferredCodecPreference,
+                            mimeType = stream.format?.mimeType,
+                            codec = stream.itagItem?.codec,
+                        )
+                    }.ifEmpty { preferredCandidates }
+            }
+        return selectByQuality(codecCandidates, preferredMusicAudioQuality)
             ?: selectByQuality(compatibleStreams, preferredMusicAudioQuality)
     }
 

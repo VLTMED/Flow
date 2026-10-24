@@ -10,14 +10,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import io.github.aedev.flow.R
+import io.github.aedev.flow.ui.components.videoplayer.settings.PlayerSettingsPage
+import io.github.aedev.flow.ui.screens.player.state.PlayerScreenState
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -128,6 +132,50 @@ class PlayerControlsOverlayTest {
         // The compact label table is a literal mapping inside PlayerQualityLabel.kt
         // (compactPlayerQualityLabel: 1080 -> "FHD"), so the expectation is pinned as a literal too.
         rule.onNodeWithText("FHD").assertIsDisplayed()
+    }
+
+    @Test
+    fun qualityPillClickOnlyRunsPictureQualityAction() {
+        var qualityClicks = 0
+        var audioTrackClicks = 0
+        rule.setContent {
+            MaterialTheme {
+                PlayerLabelPill(
+                    label = "FHD",
+                    onClick = { qualityClicks++ },
+                    onLongClick = { audioTrackClicks++ },
+                    onLongClickLabel = string(R.string.player_quality_audio_tracks_long_press_label),
+                    height = 28.dp,
+                )
+            }
+        }
+
+        rule.onNodeWithText("FHD").performClick()
+
+        assertThat(qualityClicks).isEqualTo(1)
+        assertThat(audioTrackClicks).isEqualTo(0)
+    }
+
+    @Test
+    fun qualityPillLongPressOpensAudioLanguageTracksWithoutSelectingPictureQuality() {
+        val screenState = PlayerScreenState()
+        var qualityClicks = 0
+        rule.setContent {
+            MaterialTheme {
+                PlayerLabelPill(
+                    label = "FHD",
+                    onClick = { qualityClicks++ },
+                    onLongClick = { screenState.openAudioTracksFromQualityLongPress() },
+                    onLongClickLabel = string(R.string.player_quality_audio_tracks_long_press_label),
+                    height = 28.dp,
+                )
+            }
+        }
+
+        rule.onNodeWithText("FHD").performTouchInput { longClick() }
+
+        assertThat(qualityClicks).isEqualTo(0)
+        assertThat(screenState.settingsPage).isEqualTo(PlayerSettingsPage.Audio)
     }
 
     @Test

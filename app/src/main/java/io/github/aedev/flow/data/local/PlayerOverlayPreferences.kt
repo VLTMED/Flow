@@ -11,6 +11,10 @@ data class PlayerOverlayPreferences(
     /** Shows only while SponsorBlock is on and the video has segments, so it costs nothing by default. */
     val sponsorBlockEnabled: Boolean = true,
     val nextPrevButtonsEnabled: Boolean = true,
+    /** Disables only the top and bottom edge gradients behind player controls. */
+    val edgeScrimDisabled: Boolean = false,
+    /** Hides the center transport row; a single center tap then toggles playback. */
+    val hideCenterTransportControls: Boolean = false,
     val showControlsWhileLoading: Boolean = false,
     val fullscreenSeekbarHorizontalPaddingDp: Int =
         resolveSeekbarHorizontalPaddingDp(

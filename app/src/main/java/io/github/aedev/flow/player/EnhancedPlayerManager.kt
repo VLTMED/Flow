@@ -154,6 +154,8 @@ class EnhancedPlayerManager private constructor() {
     private var currentVideoId: String? = null
     private var availableVideoStreams: List<VideoStream> = emptyList()
     private var availableAudioStreams: List<AudioStream> = emptyList()
+    private var allAudioStreams: List<AudioStream> = emptyList()
+    private var availableAudioQualityStreams: List<AudioStream> = emptyList()
     private val subtitleTracks = SubtitleTracks()
     private val subtitleDelay = SubtitleDelay()
     private var subtitleDelayVideoId: String? = null
@@ -587,7 +589,7 @@ class EnhancedPlayerManager private constructor() {
 
     private fun initializeComponents(context: Context) {
         // Initialize cache manager
-        cacheManager = PlayerCacheManager(context) { currentVideoId }.also { it.initialize() }
+        cacheManager = PlayerCacheManager(context).also { it.initialize() }
 
         // Initialize surface manager
         surfaceManager = SurfaceManager()
@@ -671,7 +673,15 @@ class EnhancedPlayerManager private constructor() {
                 getCurrentVideoStream = { currentVideoStream },
                 getCurrentAudioStream = { currentAudioStream },
                 getAvailableAudioStreams = { availableAudioStreams },
-                setCurrentAudioStream = { audio -> currentAudioStream = audio },
+                setCurrentAudioStream = { audio ->
+                    currentAudioStream = audio
+                    availableAudioQualityStreams = StreamProcessor.processAudioQualityStreams(allAudioStreams, audio)
+                    _playerState.value =
+                        _playerState.value.copy(
+                            availableAudioQualities = StreamProcessor.toAudioTrackOptions(availableAudioQualityStreams),
+                            currentAudioQuality = StreamProcessor.indexOfAudioQuality(availableAudioQualityStreams, audio),
+                        )
+                },
                 setRecoveryState = { errorHandler?.setRecovery() },
                 reloadPlaybackManager = { reloadPlaybackManager() },
             )
@@ -746,7 +756,7 @@ class EnhancedPlayerManager private constructor() {
                 loadControl = loadControl,
                 renderersFactory = renderersFactory,
                 bandwidthMeter = bandwidthMeter!!,
-                dataSourceFactory = cacheManager?.getDataSourceFactory(),
+                dataSourceFactory = cacheManager?.getDataSourceFactory(currentVideoId.orEmpty()),
             )
         player?.addAnalyticsListener(PlaybackAnalyticsLogger(TAG) { currentVideoId })
         player?.addAnalyticsListener(
@@ -853,6 +863,17 @@ class EnhancedPlayerManager private constructor() {
     private fun setupPlayerListener() {
         player?.addListener(
             object : Player.Listener {
+                override fun onIsLoadingChanged(isLoading: Boolean) {
+                    val activePlayer = player ?: return
+                    PlayerDiagnostics.logInfo(
+                        TAG,
+                        "Video loading=$isLoading, state=${playerStateName(activePlayer.playbackState)}, " +
+                            "position=${activePlayer.currentPosition}ms, " +
+                            "bufferedAhead=${activePlayer.totalBufferedDuration.coerceAtLeast(0L)}ms, " +
+                            "bufferedPosition=${activePlayer.bufferedPosition}ms",
+                    )
+                }
+
                 override fun onVideoSizeChanged(videoSize: VideoSize) {
                     if (videoSize.height > 0) {
                         _playerState.value =
@@ -1171,6 +1192,7 @@ class EnhancedPlayerManager private constructor() {
 
         // Process streams using StreamProcessor
         availableVideoStreams = StreamProcessor.processVideoStreams(videoStreams)
+        allAudioStreams = audioStreams
         availableAudioStreams = StreamProcessor.processAudioStreams(audioStreams)
         subtitleTracks.load(videoId, StreamProcessor.processCaptions(subtitles), acceptsEmbedded = localFilePath != null)
         if (audioStream == null && availableAudioStreams.isEmpty()) {
@@ -1196,6 +1218,7 @@ class EnhancedPlayerManager private constructor() {
             qualityManager?.setCurrentStream(currentVideoStream)
         }
         currentAudioStream = audioStream
+        availableAudioQualityStreams = StreamProcessor.processAudioQualityStreams(allAudioStreams, currentAudioStream)
 
         val isAutoMode = (videoStream == null)
 
@@ -1224,6 +1247,8 @@ class EnhancedPlayerManager private constructor() {
                     },
                 currentQualityKey = if (isAutoMode) null else currentVideoStream?.getContent()?.takeIf { it.isNotBlank() },
                 currentAudioTrack = StreamProcessor.indexOfAudioTrack(availableAudioStreams, currentAudioStream),
+                availableAudioQualities = StreamProcessor.toAudioTrackOptions(availableAudioQualityStreams),
+                currentAudioQuality = StreamProcessor.indexOfAudioQuality(availableAudioQualityStreams, currentAudioStream),
                 isLive = currentIsLiveStream,
                 isAtLiveEdge = false,
                 liveDurationMs = liveDurationMs,
@@ -1270,6 +1295,9 @@ class EnhancedPlayerManager private constructor() {
         innerTubeAudioFormats = emptyList()
         currentVideoStream = null
         currentAudioStream = null
+        allAudioStreams = emptyList()
+        availableAudioStreams = emptyList()
+        availableAudioQualityStreams = emptyList()
         currentDashManifestUrl = null
         currentHlsUrl = null
         subtitleTracks.load(videoId, emptyList(), acceptsEmbedded = false)
@@ -1279,7 +1307,10 @@ class EnhancedPlayerManager private constructor() {
         pendingLiveDisplaySeekAtMs = 0L
         pendingInitialLiveEdgeSeek = false
 
+        preload.clear()
         player?.stop()
+        player?.clearMediaItems()
+        cacheManager?.activateVideoSession(videoId)
 
         _playerState.value =
             _playerState.value.copy(
@@ -1295,6 +1326,10 @@ class EnhancedPlayerManager private constructor() {
                 playWhenReady = player?.playWhenReady ?: true,
                 isAtLiveEdge = false,
                 liveDurationMs = 0L,
+                availableAudioTracks = emptyList(),
+                availableAudioQualities = emptyList(),
+                currentAudioTrack = 0,
+                currentAudioQuality = -1,
                 availableSubtitles = emptyList(),
                 selectedSubtitleUrl = null,
             )
@@ -2087,6 +2122,7 @@ class EnhancedPlayerManager private constructor() {
                 prefs.defaultQualityCellular.first()
             }
         val preferredAudioLanguage = prefs.preferredAudioLanguage.first()
+        val preferredAudioCodec = prefs.audioCodecPreference.first()
         val preferredSubtitleLanguage = prefs.preferredSubtitleLanguage.first()
         val preferredCodecKey = prefs.videoCodecPriority.first()
         val mergedVideoStreams =
@@ -2107,6 +2143,7 @@ class EnhancedPlayerManager private constructor() {
                 audioCandidatesAll = mergedAudioStreams,
                 preferredQuality = preferredQuality,
                 preferredAudioLanguage = preferredAudioLanguage,
+                preferredAudioCodec = preferredAudioCodec,
                 preferredCodecKey = preferredCodecKey,
             )
         if (!beforeCommit()) return false
@@ -2204,6 +2241,7 @@ class EnhancedPlayerManager private constructor() {
                     prefs.defaultQualityCellular.first()
                 }
             val preferredAudioLanguage = prefs.preferredAudioLanguage.first()
+            val preferredAudioCodec = prefs.audioCodecPreference.first()
             val preferredSubtitleLanguage = prefs.preferredSubtitleLanguage.first()
             val preferredCodecKey = prefs.videoCodecPriority.first()
             val mergedVideoStreams =
@@ -2218,6 +2256,7 @@ class EnhancedPlayerManager private constructor() {
                     audioCandidatesAll = mergedAudioStreams,
                     preferredQuality = preferredQuality,
                     preferredAudioLanguage = preferredAudioLanguage,
+                    preferredAudioCodec = preferredAudioCodec,
                     preferredCodecKey = preferredCodecKey,
                 )
             ResolvedStreamData(
@@ -2278,15 +2317,18 @@ class EnhancedPlayerManager private constructor() {
         currentHlsUrl = null
         currentIsLiveStream = false
         pendingInitialLiveEdgeSeek = false
+        cacheManager?.activateVideoSession(data.enrichedVideo.id)
         currentVideoId = data.enrichedVideo.id
 
         availableVideoStreams = StreamProcessor.processVideoStreams(data.videoStreams)
+        allAudioStreams = data.audioStreams
         availableAudioStreams = StreamProcessor.processAudioStreams(data.audioStreams)
         subtitleTracks.load(data.enrichedVideo.id, StreamProcessor.processCaptions(data.subtitles), acceptsEmbedded = false)
         resetSubtitleDelayFor(data.enrichedVideo.id)
         val ladder = AdaptiveLadder.forPreload(data.videoStream, availableVideoStreams, data.preferredCodec)
         currentVideoStream = data.videoStream ?: ladder.lastOrNull() ?: availableVideoStreams.firstOrNull()
         currentAudioStream = data.audioStream
+        availableAudioQualityStreams = StreamProcessor.processAudioQualityStreams(allAudioStreams, currentAudioStream)
         applySubtitleTrackSelection()
 
         qualityManager?.resetForNewVideo()
@@ -2332,6 +2374,8 @@ class EnhancedPlayerManager private constructor() {
                         ?: 0,
                 availableQualities = buildAvailableQualityOptions(),
                 availableAudioTracks = StreamProcessor.toAudioTrackOptions(availableAudioStreams),
+                availableAudioQualities = StreamProcessor.toAudioTrackOptions(availableAudioQualityStreams),
+                currentAudioQuality = StreamProcessor.indexOfAudioQuality(availableAudioQualityStreams, currentAudioStream),
                 availableSubtitles = subtitleTracks.options,
                 selectedSubtitleUrl = subtitleTracks.selected?.url,
                 currentQuality =
@@ -2593,6 +2637,7 @@ class EnhancedPlayerManager private constructor() {
         playbackTracker?.stop()
         player?.stop()
         player?.clearMediaItems()
+        cacheManager?.closeVideoSession()
         qualityManager?.resetForNewVideo()
         _playerState.value =
             _playerState.value.copy(
@@ -2840,6 +2885,7 @@ class EnhancedPlayerManager private constructor() {
     fun switchAudioTrack(index: Int) {
         if (index in availableAudioStreams.indices) {
             currentAudioStream = availableAudioStreams[index]
+            availableAudioQualityStreams = StreamProcessor.processAudioQualityStreams(allAudioStreams, currentAudioStream)
             val position = player?.currentPosition ?: 0L
             val wasPlaying = player?.isPlaying ?: false
             if (audioOnlyMode.isActive) {
@@ -2849,8 +2895,30 @@ class EnhancedPlayerManager private constructor() {
             }
             player?.seekTo(position)
             if (wasPlaying) player?.play()
-            _playerState.value = _playerState.value.copy(currentAudioTrack = index)
+            _playerState.value =
+                _playerState.value.copy(
+                    currentAudioTrack = index,
+                    availableAudioQualities = StreamProcessor.toAudioTrackOptions(availableAudioQualityStreams),
+                    currentAudioQuality = StreamProcessor.indexOfAudioQuality(availableAudioQualityStreams, currentAudioStream),
+                )
         }
+    }
+
+    fun switchAudioQuality(index: Int) {
+        val selectedStream = availableAudioQualityStreams.getOrNull(index) ?: return
+        if (selectedStream.getContent() == currentAudioStream?.getContent()) return
+
+        currentAudioStream = selectedStream
+        val position = player?.currentPosition ?: 0L
+        val wasPlaying = player?.isPlaying ?: false
+        if (audioOnlyMode.isActive) {
+            loadMediaInternal(null, currentAudioStream, audioOnly = true)
+        } else {
+            loadMediaInternal(currentVideoStream, currentAudioStream)
+        }
+        player?.seekTo(position)
+        if (wasPlaying) player?.play()
+        _playerState.value = _playerState.value.copy(currentAudioQuality = index)
     }
 
     /** Shows the track whose option has [url], or turns captions off for null. */
@@ -3251,10 +3319,14 @@ class EnhancedPlayerManager private constructor() {
         mediaLoader?.releaseSabr()
         player?.stop()
         player?.clearMediaItems()
+        cacheManager?.closeVideoSession()
         qualityManager?.resetForNewVideo()
         currentVideoId = null
         currentVideoStream = null
         currentAudioStream = null
+        allAudioStreams = emptyList()
+        availableAudioStreams = emptyList()
+        availableAudioQualityStreams = emptyList()
         currentLocalFilePath = null
         clearedMediaRecoveryState.clear()
         _playerState.value =
@@ -3270,6 +3342,10 @@ class EnhancedPlayerManager private constructor() {
                 isLive = false,
                 isAtLiveEdge = false,
                 liveDurationMs = 0L,
+                availableAudioTracks = emptyList(),
+                availableAudioQualities = emptyList(),
+                currentAudioTrack = 0,
+                currentAudioQuality = -1,
             )
     }
 
@@ -3353,8 +3429,12 @@ class EnhancedPlayerManager private constructor() {
         surfaceManager?.release(player)
         audioEffects?.audioSessionRegistry()?.close(announcedAudioSession)
         announcedAudioSession = 0
+        player?.stop()
+        player?.clearMediaItems()
+        cacheManager?.clearAllVideoSessionCache()
         player?.release()
         player = null
+        playerFactory.invalidateCachedPreferences()
         trackSelector = null
         appContext = null
         cacheManager?.release()

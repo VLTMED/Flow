@@ -51,6 +51,7 @@ internal fun PlaybackDialogs(
             val speed by viewModel.longPressSpeed.collectAsStateWithLifecycle()
             FlowChoiceDialog(
                 title = stringResource(R.string.player_appearance_long_press_speed_title),
+                description = stringResource(R.string.player_appearance_long_press_speed_subtitle),
                 options = LongPressSpeedOptions.map { FlowChoice(it, longPressSpeedLabel(it)) },
                 selected = if (speed <= 0f) 0f else speed,
                 onSelect = viewModel::setLongPressSpeed,

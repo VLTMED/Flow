@@ -9,14 +9,26 @@ internal object BufferIndex {
     private const val CUSTOM_PROFILE_ROW = "buffer.profile.CUSTOM"
 
     val profile = SettingEntry(key = "buffer.profile", title = R.string.buffer_settings_header_profile, destination = page)
-    val minBuffer =
-        SettingEntry(key = "buffer.min", title = R.string.settings_buffer_min, destination = page, revealVia = CUSTOM_PROFILE_ROW)
     val maxBuffer =
         SettingEntry(key = "buffer.max", title = R.string.settings_buffer_max, destination = page, revealVia = CUSTOM_PROFILE_ROW)
     val startBuffer =
         SettingEntry(key = "buffer.start", title = R.string.settings_buffer_start, destination = page, revealVia = CUSTOM_PROFILE_ROW)
     val rebuffer =
         SettingEntry(key = "buffer.rebuffer", title = R.string.settings_buffer_rebuffer, destination = page, revealVia = CUSTOM_PROFILE_ROW)
+    val backBuffer =
+        SettingEntry(
+            key = "buffer.back",
+            title = R.string.settings_buffer_back,
+            summary = R.string.buffer_back_buffer_desc,
+            destination = page,
+        )
+    val memory =
+        SettingEntry(
+            key = "buffer.memory",
+            title = R.string.buffer_memory_target,
+            summary = R.string.buffer_memory_desc,
+            destination = page,
+        )
 
-    val all = listOf(profile, minBuffer, maxBuffer, startBuffer, rebuffer)
+    val all = listOf(profile, maxBuffer, startBuffer, rebuffer, backBuffer, memory)
 }

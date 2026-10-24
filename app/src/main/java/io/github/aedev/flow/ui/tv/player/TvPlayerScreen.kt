@@ -308,6 +308,7 @@ fun TvPlayerScreen(
 
         TvPlayerControls(
             visible = overlayState.mode == TvOverlayMode.TRANSPORT,
+            edgeScrimDisabled = overlayPreferences.edgeScrimDisabled,
             video = video,
             isPlaying = playerState.isPlaying,
             isBuffering = playerState.isBuffering,

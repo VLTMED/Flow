@@ -1,5 +1,6 @@
 package io.github.aedev.flow.player.stream
 
+import io.github.aedev.flow.data.local.AudioCodecPreference
 import io.github.aedev.flow.data.local.VideoQuality
 import io.github.aedev.flow.player.quality.QualityManager
 import org.schabi.newpipe.extractor.stream.AudioStream
@@ -18,11 +19,13 @@ object ServicePlaybackStreamSelector {
         preferredQuality: VideoQuality,
         preferredAudioLanguage: String,
         preferredCodecKey: String = "auto",
+        preferredAudioCodec: AudioCodecPreference = AudioCodecPreference.AUTO,
     ): Pair<VideoStream?, AudioStream?> {
         val audioStream =
             AudioStreamSelector.selectPreferredAudioStream(
                 streams = audioCandidatesAll.distinctBy { it.url ?: it.content },
                 preferredAudioLanguage = preferredAudioLanguage,
+                preferredCodecPreference = preferredAudioCodec,
             )
 
         val videoStreams =

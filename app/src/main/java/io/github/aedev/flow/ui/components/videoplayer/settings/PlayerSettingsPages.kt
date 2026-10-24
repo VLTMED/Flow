@@ -6,10 +6,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.Tab
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -22,6 +29,7 @@ import io.github.aedev.flow.player.state.SubtitleOrigin
 import io.github.aedev.flow.player.stream.VideoCodecUtils
 import io.github.aedev.flow.ui.components.shared.FlowNavRow
 import io.github.aedev.flow.ui.components.shared.FlowRowGroup
+import io.github.aedev.flow.ui.components.shared.FlowSectionHeader
 import io.github.aedev.flow.ui.components.shared.FlowSelectionRow
 import io.github.aedev.flow.ui.components.shared.MediaAudioTrackRow
 import io.github.aedev.flow.ui.components.shared.MediaPlaybackSpeedPicker
@@ -37,6 +45,10 @@ internal fun PlayerSettingsQualityPage(
     currentQualityKey: String?,
     useGroupedQualitySelector: Boolean,
     onQualitySelected: (QualityOption) -> Unit,
+    availableAudioQualities: List<AudioTrackOption> = emptyList(),
+    currentAudioQuality: Int = -1,
+    onAudioQualitySelected: (Int) -> Unit = {},
+    showAudioQualityTabs: Boolean = false,
 ) {
     val autoLabel = stringResource(R.string.quality_auto)
     val selectorOptions =
@@ -55,11 +67,91 @@ internal fun PlayerSettingsQualityPage(
             )
         }
 
-    MediaQualitySelectorContent(
-        options = selectorOptions,
-        groupedByResolution = useGroupedQualitySelector,
-        onOptionSelected = onQualitySelected,
-    )
+    if (!showAudioQualityTabs) {
+        MediaQualitySelectorContent(
+            options = selectorOptions,
+            groupedByResolution = useGroupedQualitySelector,
+            onOptionSelected = onQualitySelected,
+        )
+        return
+    }
+
+    var selectedTabIndex by rememberSaveable { mutableIntStateOf(0) }
+    PrimaryTabRow(selectedTabIndex = selectedTabIndex) {
+        Tab(
+            selected = selectedTabIndex == 0,
+            onClick = { selectedTabIndex = 0 },
+            text = { Text(stringResource(R.string.player_quality_tab_picture)) },
+        )
+        Tab(
+            selected = selectedTabIndex == 1,
+            onClick = { selectedTabIndex = 1 },
+            text = { Text(stringResource(R.string.player_quality_tab_audio)) },
+        )
+    }
+
+    when (selectedTabIndex) {
+        0 -> {
+            MediaQualitySelectorContent(
+                options = selectorOptions,
+                groupedByResolution = false,
+                onOptionSelected = onQualitySelected,
+            )
+        }
+
+        else -> {
+            if (availableAudioQualities.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.player_quality_audio_unavailable),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(16.dp),
+                )
+            } else {
+                FlowRowGroup {
+                    availableAudioQualities.forEachIndexed { index, track ->
+                        val codecLabel =
+                            when (track.codecKey) {
+                                "aac" -> stringResource(R.string.audio_codec_aac)
+                                "opus" -> stringResource(R.string.audio_codec_opus)
+                                else -> null
+                            }
+                        val bitrateKbps =
+                            (track.bitrate.coerceAtLeast(0L) / 1000L)
+                                .coerceAtMost(Int.MAX_VALUE.toLong())
+                                .toInt()
+                        val qualityLabel =
+                            when {
+                                codecLabel != null && bitrateKbps > 0 -> {
+                                    stringResource(R.string.audio_quality_format_template, codecLabel, bitrateKbps)
+                                }
+
+                                codecLabel != null -> {
+                                    codecLabel
+                                }
+
+                                bitrateKbps > 0 -> {
+                                    stringResource(R.string.audio_bitrate_kbps, bitrateKbps)
+                                }
+
+                                else -> {
+                                    ""
+                                }
+                            }
+                        MediaAudioTrackRow(
+                            label = qualityLabel.ifBlank { audioTrackDisplayLabel(track, index) },
+                            supportingText =
+                                track.language.takeIf { it.isNotBlank() }
+                                    ?: track.label.takeIf { it.isNotBlank() },
+                            selected = index == currentAudioQuality,
+                            shape = flowRowGroupShape(index, availableAudioQualities.size),
+                            onClick = { onAudioQualitySelected(index) },
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
 private fun QualityOption.displayLabel(): String = label.takeIf { it.isNotBlank() } ?: "${height}p"
@@ -106,15 +198,24 @@ internal fun PlayerSettingsAudioPage(
     currentAudioTrack: Int,
     onTrackSelected: (Int) -> Unit,
 ) {
-    FlowRowGroup {
-        availableAudioTracks.forEachIndexed { index, track ->
-            MediaAudioTrackRow(
-                label = audioTrackDisplayLabel(track, index),
-                supportingText = track.language.takeIf { it.isNotBlank() },
-                selected = index == currentAudioTrack,
-                shape = flowRowGroupShape(index, availableAudioTracks.size),
-                onClick = { onTrackSelected(index) },
-            )
+    if (availableAudioTracks.isEmpty()) {
+        Text(
+            text = stringResource(R.string.player_audio_tracks_unavailable),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(16.dp),
+        )
+    } else {
+        FlowRowGroup {
+            availableAudioTracks.forEachIndexed { index, track ->
+                MediaAudioTrackRow(
+                    label = audioTrackDisplayLabel(track, index),
+                    supportingText = track.language.takeIf { it.isNotBlank() },
+                    selected = index == currentAudioTrack,
+                    shape = flowRowGroupShape(index, availableAudioTracks.size),
+                    onClick = { onTrackSelected(index) },
+                )
+            }
         }
     }
 }

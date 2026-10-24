@@ -49,6 +49,8 @@ import io.github.aedev.flow.R
 import io.github.aedev.flow.data.audio.eq.EqualizerRepository
 import io.github.aedev.flow.data.download.DownloadUtil
 import io.github.aedev.flow.data.download.LegacySongDownloads
+import io.github.aedev.flow.data.local.AudioCodecPreference
+import io.github.aedev.flow.data.local.MusicAudioQuality
 import io.github.aedev.flow.data.local.PlayerPreferences
 import io.github.aedev.flow.data.local.QueuePersistence
 import io.github.aedev.flow.data.localmedia.LocalMediaIds
@@ -91,6 +93,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -307,11 +310,18 @@ class Media3MusicService : MediaLibraryService() {
             }
         }
         lifecycleScope.launch {
-            var lastQuality: io.github.aedev.flow.data.local.MusicAudioQuality? = null
-            prefs.musicAudioQuality.collect { quality ->
-                val previous = lastQuality
-                lastQuality = quality
-                if (previous != null && previous != quality) {
+            var lastAudioSettings: MusicAudioSettings? = null
+            combine(
+                prefs.musicAudioQuality,
+                prefs.audioCodecPreference,
+                prefs.musicAudioFormatItag,
+                prefs.preferredAudioLanguage,
+            ) { quality, codec, itag, language ->
+                MusicAudioSettings(quality, codec, itag, language)
+            }.distinctUntilChanged().collect { audioSettings ->
+                val previous = lastAudioSettings
+                lastAudioSettings = audioSettings
+                if (previous != null && previous != audioSettings) {
                     applyMusicQualityChange()
                 }
             }
@@ -1888,3 +1898,10 @@ class Media3MusicService : MediaLibraryService() {
         }
     }
 }
+
+private data class MusicAudioSettings(
+    val quality: MusicAudioQuality,
+    val codec: AudioCodecPreference,
+    val itag: Int,
+    val preferredLanguage: String,
+)

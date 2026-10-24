@@ -102,6 +102,43 @@ class PlayerDraggableStateTest {
         }
 
     @Test
+    fun `a committed collapse chooses the left dock target once and settles there`() =
+        runTest {
+            val state = newState(collapsed = false)
+            state.preferLeftAlignedMiniPlayer = true
+            state.leftAlignedTargetX = 24f
+            state.cachedTargetX = 570f
+            state.cachedTargetY = 2200f
+
+            state.collapse()
+            assertThat(state.corner).isEqualTo(MiniPlayerCorner.BottomLeft)
+            assertThat(state.cachedTargetX).isEqualTo(24f)
+            pumpFrames(4)
+            assertThat(state.corner).isEqualTo(MiniPlayerCorner.BottomLeft)
+            assertThat(state.cachedTargetX).isEqualTo(24f)
+            settle(state)
+
+            assertThat(state.offsetX.value).isEqualTo(24f)
+            state.scope.cancel()
+        }
+
+    @Test
+    fun `an explicit right alignment preference remains unchanged on collapse`() =
+        runTest {
+            val state = newState(collapsed = false)
+            state.preferLeftAlignedMiniPlayer = false
+            state.leftAlignedTargetX = 24f
+            state.cachedTargetX = 570f
+            state.cachedTargetY = 2200f
+
+            state.collapse()
+
+            assertThat(state.corner).isEqualTo(MiniPlayerCorner.BottomRight)
+            assertThat(state.cachedTargetX).isEqualTo(570f)
+            state.scope.cancel()
+        }
+
+    @Test
     fun `a long frame pauses a collapse instead of skipping it ahead`() =
         runTest {
             val state = newState(collapsed = false)
@@ -253,7 +290,7 @@ class PlayerDraggableStateTest {
             assertThat(state.expandFraction.value).isEqualTo(0f)
             assertThat(state.offsetX.value).isEqualTo(0f)
             assertThat(state.offsetY.value).isEqualTo(0f)
-            assertThat(state.corner).isEqualTo(MiniPlayerCorner.BottomRight)
+            assertThat(state.corner).isEqualTo(MiniPlayerCorner.BottomLeft)
             assertThat(state.currentValue).isEqualTo(PlayerSheetValue.Expanded)
             state.scope.cancel()
         }

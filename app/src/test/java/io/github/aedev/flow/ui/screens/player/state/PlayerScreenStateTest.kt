@@ -49,6 +49,7 @@ class PlayerScreenStateTest {
             "exitDragOffsetY" to 0f,
             "isSpeedBoostActive" to false,
             "normalSpeed" to 1.0f,
+            "speedBoostSpeed" to 1.0f,
             "showShortsPrompt" to false,
             "hasShownShortsPrompt" to false,
         )
@@ -97,6 +98,7 @@ class PlayerScreenStateTest {
             "resizeMode",
             "isSpeedBoostActive",
             "normalSpeed",
+            "speedBoostSpeed",
         )
 
     private val dismissMediaSheetsClears = setOf("activeSheet")
@@ -150,6 +152,7 @@ class PlayerScreenStateTest {
             "exitDragOffsetY" to exitDragOffsetY,
             "isSpeedBoostActive" to isSpeedBoostActive,
             "normalSpeed" to normalSpeed,
+            "speedBoostSpeed" to speedBoostSpeed,
             "showShortsPrompt" to showShortsPrompt,
             "hasShownShortsPrompt" to hasShownShortsPrompt,
         )
@@ -191,6 +194,7 @@ class PlayerScreenStateTest {
         exitDragOffsetY = 300f
         isSpeedBoostActive = true
         normalSpeed = 1.5f
+        speedBoostSpeed = 2.5f
         showShortsPrompt = true
         hasShownShortsPrompt = true
     }
@@ -288,6 +292,16 @@ class PlayerScreenStateTest {
         state.open(PlayerSheet.Chapters)
         assertThat(state.isSettingsOpen).isFalse()
         assertThat(state.settingsPage).isEqualTo(PlayerSettingsPage.Main)
+    }
+
+    @Test
+    fun `quality long press opens the audio language tracks page`() {
+        val state = PlayerScreenState()
+
+        state.openAudioTracksFromQualityLongPress()
+
+        assertThat(state.isSettingsOpen).isTrue()
+        assertThat(state.settingsPage).isEqualTo(PlayerSettingsPage.Audio)
     }
 
     @Test

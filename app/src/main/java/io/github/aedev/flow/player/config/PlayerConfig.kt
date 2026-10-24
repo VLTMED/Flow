@@ -29,21 +29,30 @@ object PlayerConfig {
     /** Back buffer duration for low-memory devices. */
     const val LOW_MEMORY_BACK_BUFFER_DURATION_MS = 0
 
-    /** Hard runtime cap for main-player max buffer */
-    const val MAX_SAFE_MAIN_BUFFER_MS = 45_000
+    /** Maximum user-requested back-buffer retention window; constrained heaps still disable it. */
+    const val MAX_SAFE_BACK_BUFFER_DURATION_MS = 300_000
 
-    /** Hard runtime cap for main-player min buffer so low-RAM devices do not over-retain media. */
-    const val MAX_SAFE_MAIN_MIN_BUFFER_MS = 20_000
+    /** Lowest forward-buffer value offered by the Custom settings slider. */
+    const val MIN_SELECTABLE_MAIN_BUFFER_MS = 30_000
 
-    /** Runtime caps used when Android reports a small app heap. */
-    const val LOW_MEMORY_MAX_SAFE_MAIN_BUFFER_MS = 18_000
-    const val LOW_MEMORY_MAX_SAFE_MAIN_MIN_BUFFER_MS = 8_000
+    /** Hard runtime cap for the user-configurable forward buffer on standard-memory devices. */
+    const val MAX_SAFE_MAIN_BUFFER_MS = 500_000
+
+    /** The selected forward-buffer target is also Media3's minimum loading target. */
+    const val MAX_SAFE_MAIN_MIN_BUFFER_MS = MAX_SAFE_MAIN_BUFFER_MS
+
+    /** Highest selectable request: 1,907 MiB (about 2.00 GB decimal), below Int.MAX_VALUE in bytes. */
+    const val MAX_SELECTABLE_MAIN_TARGET_BUFFER_MIB = 1_907
+    const val MAX_SELECTABLE_MAIN_TARGET_BUFFER_BYTES = MAX_SELECTABLE_MAIN_TARGET_BUFFER_MIB * 1024 * 1024
 
     const val MAIN_TARGET_BUFFER_BYTES = 32 * 1024 * 1024
+    const val MAIN_TARGET_BUFFER_CAP_BYTES = 256 * 1024 * 1024
 
-    /** Smaller target buffer budgets for devices with 256-384 MB app heaps. */
+    /** Smaller target buffer budgets for constrained app heaps. */
     const val LOW_MEMORY_MAIN_TARGET_BUFFER_BYTES = 4 * 1024 * 1024
     const val MID_MEMORY_MAIN_TARGET_BUFFER_BYTES = 12 * 1024 * 1024
+    const val LOW_MEMORY_MAIN_TARGET_BUFFER_CAP_BYTES = 8 * 1024 * 1024
+    const val MID_MEMORY_MAIN_TARGET_BUFFER_CAP_BYTES = 32 * 1024 * 1024
 
     /** Explicit target buffer budget per shorts player in the pooled shorts stack. */
     const val SHORTS_TARGET_BUFFER_BYTES = 4 * 1024 * 1024
@@ -84,12 +93,8 @@ object PlayerConfig {
     /** Buffer a ladder needs before Media3 moves it up a quality (Media3's default is 10 s). */
     const val ABR_MIN_BUFFER_FOR_QUALITY_INCREASE_MS = 5_000
 
-    /**
-     * Media3 holds the current quality while more than this is buffered. At its 25 s default a full
-     * 45 s buffer drains for 20 s before a collapsed network steps down; the midpoint of the main
-     * buffer window cuts that to 12.5 s.
-     */
-    const val ABR_MAX_BUFFER_FOR_QUALITY_DECREASE_MS = (MAX_SAFE_MAIN_MIN_BUFFER_MS + MAX_SAFE_MAIN_BUFFER_MS) / 2
+    /** Keep quality downshift responsive even when the user chooses a much longer playback buffer. */
+    const val ABR_MAX_BUFFER_FOR_QUALITY_DECREASE_MS = 25_000
 
     /** Interval for bandwidth checks during playback (5 seconds) */
     const val BANDWIDTH_CHECK_INTERVAL_MS = 5000L

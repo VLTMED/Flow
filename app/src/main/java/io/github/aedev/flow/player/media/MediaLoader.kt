@@ -157,8 +157,9 @@ class MediaLoader(
                 )
 
                 val ctx = context ?: throw IllegalStateException("Context not initialized")
+                cacheManager?.activateVideoSession(mediaId)
                 val dataSourceFactory =
-                    cacheManager?.getDataSourceFactory()
+                    cacheManager?.getDataSourceFactory(mediaId)
                         ?: DefaultDataSource.Factory(ctx)
 
                 if (!audioOnly && surfaceManager?.isSurfaceReady != true && localFilePath == null) {
@@ -240,7 +241,7 @@ class MediaLoader(
         adaptiveLadder: List<VideoStream> = emptyList(),
     ): MediaSource? {
         val ctx = context ?: return null
-        val dataSourceFactory = cacheManager?.getDataSourceFactory() ?: DefaultDataSource.Factory(ctx)
+        val dataSourceFactory = cacheManager?.getDataSourceFactory(mediaId) ?: DefaultDataSource.Factory(ctx)
         return try {
             createMediaSource(
                 context = ctx,
@@ -359,13 +360,13 @@ class MediaLoader(
             } else {
                 val resolver =
                     VideoPlaybackResolver(
-                        cacheManager?.getDashDataSourceFactory() ?: dataSourceFactory,
-                        cacheManager?.getProgressiveDataSourceFactory() ?: dataSourceFactory,
+                        cacheManager?.getDashDataSourceFactory(mediaId) ?: dataSourceFactory,
+                        cacheManager?.getProgressiveDataSourceFactory(mediaId) ?: dataSourceFactory,
                         cacheManager?.getLiveDashDataSourceFactory()
-                            ?: cacheManager?.getDashDataSourceFactory()
+                            ?: cacheManager?.getDashDataSourceFactory(mediaId)
                             ?: dataSourceFactory,
                         cacheManager?.getLiveHlsDataSourceFactory()
-                            ?: cacheManager?.getHlsDataSourceFactory()
+                            ?: cacheManager?.getHlsDataSourceFactory(mediaId)
                             ?: dataSourceFactory,
                         mediaId = mediaId,
                         mediaMetadata = mediaMetadata,

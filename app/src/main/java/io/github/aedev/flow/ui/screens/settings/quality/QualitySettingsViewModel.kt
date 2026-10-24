@@ -1,6 +1,7 @@
 package io.github.aedev.flow.ui.screens.settings.quality
 
 import dagger.hilt.android.lifecycle.HiltViewModel
+import io.github.aedev.flow.data.local.AudioCodecPreference
 import io.github.aedev.flow.data.local.MusicAudioQuality
 import io.github.aedev.flow.data.local.PlayerPreferences
 import io.github.aedev.flow.data.local.ThumbnailQuality
@@ -20,6 +21,7 @@ class QualitySettingsViewModel
         val shortsWifi = preferences.shortsQualityWifi.asState(VideoQuality.Q_720P)
         val shortsMobile = preferences.shortsQualityCellular.asState(VideoQuality.Q_480P)
         val music = preferences.musicAudioQuality.asState(MusicAudioQuality.AUTO)
+        val audioCodecPreference = preferences.audioCodecPreference.asState(AudioCodecPreference.AUTO)
         val thumbnailsWifi = preferences.thumbnailQualityWifi.asState(ThumbnailQuality.HIGH)
         val thumbnailsMobile = preferences.thumbnailQualityCellular.asState(ThumbnailQuality.HIGH)
         val codec = preferences.defaultVideoCodec.asState(VideoCodec.H264)
@@ -34,6 +36,8 @@ class QualitySettingsViewModel
         fun setShortsMobile(value: VideoQuality) = write { preferences.setShortsQualityCellular(value) }
 
         fun setMusic(value: MusicAudioQuality) = write { preferences.setMusicAudioQuality(value) }
+
+        fun setAudioCodecPreference(value: AudioCodecPreference) = write { preferences.setAudioCodecPreference(value) }
 
         fun setThumbnailsWifi(value: ThumbnailQuality) = write { preferences.setThumbnailQualityWifi(value) }
 

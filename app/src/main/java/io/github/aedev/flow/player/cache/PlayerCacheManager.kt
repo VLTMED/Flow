@@ -31,7 +31,6 @@ import kotlinx.coroutines.withContext
 @UnstableApi
 class PlayerCacheManager(
     private val context: Context,
-    currentVideoId: () -> String?,
 ) {
     companion object {
         private const val TAG = "PlayerCacheManager"
@@ -44,6 +43,11 @@ class PlayerCacheManager(
          */
         @Volatile
         private var preloadedLimits: MediaCacheLimits? = null
+
+        @Volatile
+        private var staleVideoSessionCacheCleared = false
+
+        private val sessionCacheCleanupLock = Any()
 
         /**
          * Warms the cache-size preferences and the video [SimpleCache] on [Dispatchers.IO].
@@ -58,8 +62,11 @@ class PlayerCacheManager(
                 val appContext = context.applicationContext
                 val limits = runCatching { readLimits(appContext) }.getOrDefault(MediaCacheLimits.DEFAULT)
                 preloadedLimits = limits
-                runCatching { SharedPlayerCacheProvider.getOrCreate(appContext, maxCacheSizeBytes = limits.videoBytes) }
-                    .onFailure { Log.w(TAG, "Cache preload failed; initialize() will retry", it) }
+                runCatching {
+                    SharedPlayerCacheProvider
+                        .getOrCreate(appContext, maxCacheSizeBytes = limits.videoBytes)
+                        .also(::clearPreviousVideoSessionCache)
+                }.onFailure { Log.w(TAG, "Cache preload failed; initialize() will retry", it) }
             }
 
         /**
@@ -77,9 +84,28 @@ class PlayerCacheManager(
                 artworkBytes = MediaCacheSizes.artworkBytes(preferences.artworkCacheSizeMb.first()),
             )
         }
+
+        private fun clearPreviousVideoSessionCache(cache: SimpleCache) {
+            synchronized(sessionCacheCleanupLock) {
+                if (staleVideoSessionCacheCleared) return
+                var complete = true
+                val previousSessionKeys = cache.keys.filter(VideoCacheKeys::isSessionKey)
+                previousSessionKeys.forEach { key ->
+                    runCatching { cache.removeResource(key) }
+                        .onFailure {
+                            complete = false
+                            Log.w(TAG, "Could not clear an orphaned video-session cache entry", it)
+                        }
+                }
+                staleVideoSessionCacheCleared = complete
+                if (previousSessionKeys.isNotEmpty()) {
+                    Log.i(TAG, "Cleared ${previousSessionKeys.size} video-session cache entries from the previous process")
+                }
+            }
+        }
     }
 
-    private val videoCacheKeys = VideoCacheKeys(currentVideoId)
+    private val videoSession = VideoCacheSession(::clearVideo)
 
     private val refusedStreams =
         RefusedStreamSwapper(
@@ -121,40 +147,14 @@ class PlayerCacheManager(
 
         try {
             cache = SharedPlayerCacheProvider.getOrCreate(context, maxCacheSizeBytes = configuredLimits(context).videoBytes)
+            clearPreviousVideoSessionCache(cache!!)
 
-            val cacheFactory =
-                CacheDataSource
-                    .Factory()
-                    .setCache(cache!!)
-                    .setCacheKeyFactory(videoCacheKeys)
-                    .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-
-            // Create the 3 specific factories
-            sharedDashDataSourceFactory =
-                CacheDataSource
-                    .Factory()
-                    .setCache(cache!!)
-                    .setCacheKeyFactory(videoCacheKeys)
-                    .setUpstreamDataSourceFactory(dashUpstream)
-                    .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-
-            sharedProgressiveDataSourceFactory =
-                CacheDataSource
-                    .Factory()
-                    .setCache(cache!!)
-                    .setCacheKeyFactory(videoCacheKeys)
-                    .setUpstreamDataSourceFactory(progressiveUpstream)
-                    .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-
-            sharedHlsDataSourceFactory =
-                CacheDataSource
-                    .Factory()
-                    .setCache(cache!!)
-                    .setCacheKeyFactory(videoCacheKeys)
-                    .setUpstreamDataSourceFactory(hlsUpstream)
-                    .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-
-            sharedDataSourceFactory = cacheFactory.setUpstreamDataSourceFactory(upstream)
+            // Keep only upstream factories here. Each MediaSource receives a fresh cache factory
+            // with an immutable key scope for its own mediaId, including preloaded sources.
+            sharedDataSourceFactory = upstream
+            sharedDashDataSourceFactory = dashUpstream
+            sharedProgressiveDataSourceFactory = progressiveUpstream
+            sharedHlsDataSourceFactory = hlsUpstream
 
             Log.d(TAG, "Cache initialized successfully")
             return true
@@ -173,12 +173,12 @@ class PlayerCacheManager(
     /**
      * Get the legacy/default data source factory.
      */
-    fun getDataSourceFactory(): DataSource.Factory? = sharedDataSourceFactory
+    fun getDataSourceFactory(mediaId: String): DataSource.Factory? = sharedDataSourceFactory?.let { videoCacheFactory(it, mediaId) }
 
     /**
      * Get the DASH-specific data source factory.
      */
-    fun getDashDataSourceFactory(): DataSource.Factory? = sharedDashDataSourceFactory
+    fun getDashDataSourceFactory(mediaId: String): DataSource.Factory? = sharedDashDataSourceFactory?.let { videoCacheFactory(it, mediaId) }
 
     /**
      * Live DASH manifests are timeline data, so keep them off the persistent media cache.
@@ -188,12 +188,13 @@ class PlayerCacheManager(
     /**
      * Get the progressive media data source factory.
      */
-    fun getProgressiveDataSourceFactory(): DataSource.Factory? = sharedProgressiveDataSourceFactory
+    fun getProgressiveDataSourceFactory(mediaId: String): DataSource.Factory? =
+        sharedProgressiveDataSourceFactory?.let { videoCacheFactory(it, mediaId) }
 
     /**
      * Get the HLS data source factory.
      */
-    fun getHlsDataSourceFactory(): DataSource.Factory? = sharedHlsDataSourceFactory
+    fun getHlsDataSourceFactory(mediaId: String): DataSource.Factory? = sharedHlsDataSourceFactory?.let { videoCacheFactory(it, mediaId) }
 
     /**
      * Live HLS playlists move constantly, so use an uncached upstream source for them.
@@ -205,14 +206,30 @@ class PlayerCacheManager(
      */
     fun getCacheSize(): Long = cache?.cacheSpace ?: 0L
 
-    /** Drops what [videoId]'s streams left in the cache, leaving every other video and song alone. */
+    /** Drops only namespaced cache keys owned by [videoId], leaving Shorts and downloads alone. */
     fun clearVideo(videoId: String) {
         val cache = cache ?: return
-        val keys = videoCacheKeys.takeKeys(videoId)
+        if (videoId.isBlank()) return
+        val keys = cache.keys.filter { VideoCacheKeys.belongsToVideo(it, videoId) }
         keys.forEach { key ->
             runCatching { cache.removeResource(key) }.onFailure { Log.w(TAG, "Could not clear a cached stream of $videoId", it) }
         }
         Log.d(TAG, "Cleared ${keys.size} cached streams of $videoId")
+    }
+
+    fun activateVideoSession(videoId: String) = videoSession.activate(videoId)
+
+    fun closeVideoSession() = videoSession.close()
+
+    /** Clears all scoped stream/preload data when the complete player session is released. */
+    fun clearAllVideoSessionCache() {
+        videoSession.close()
+        val cache = cache ?: return
+        val keys = cache.keys.filter(VideoCacheKeys::isSessionKey)
+        keys.forEach { key ->
+            runCatching { cache.removeResource(key) }.onFailure { Log.w(TAG, "Could not clear a video-session cache entry", it) }
+        }
+        Log.d(TAG, "Cleared ${keys.size} video-session cache entries")
     }
 
     /**
@@ -220,6 +237,7 @@ class PlayerCacheManager(
      */
     fun release() {
         try {
+            videoSession.close()
             cache = null
             sharedDataSourceFactory = null
             sharedDashDataSourceFactory = null
@@ -237,6 +255,20 @@ class PlayerCacheManager(
      * Check if cache is initialized and available.
      */
     fun isCacheAvailable(): Boolean = cache != null
+
+    private fun videoCacheFactory(
+        upstream: DataSource.Factory,
+        mediaId: String,
+    ): DataSource.Factory {
+        val activeCache = cache ?: return upstream
+        if (mediaId.isBlank()) return upstream
+        return CacheDataSource
+            .Factory()
+            .setCache(activeCache)
+            .setCacheKeyFactory(VideoCacheKeys(mediaId))
+            .setUpstreamDataSourceFactory(upstream)
+            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+    }
 
     /**
      * Records which video [urls] belong to, so a refusal of one of them mid-playback can be served

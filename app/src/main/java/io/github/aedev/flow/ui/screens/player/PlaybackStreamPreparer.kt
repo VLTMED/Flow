@@ -78,6 +78,7 @@ internal class PlaybackStreamPreparer(
                 audioCandidatesAll = audioStreams,
                 preferredQuality = step.preferredQuality,
                 preferredAudioLanguage = step.preferredAudioLanguage,
+                preferredAudioCodec = step.preferredAudioCodec,
                 preferredCodecKey = step.preferredCodecKey,
             )
         return VodStreams(

@@ -105,8 +105,11 @@ internal fun VideoPlayerTopBar(
         modifier =
             modifier
                 .fillMaxWidth()
-                .playerEdgeScrim(ScrimEdge.Top, PlayerScrim.copy(alpha = TOP_BAR_SCRIM_ALPHA))
-                .padding(top = topPadding),
+                .playerEdgeScrim(
+                    edge = ScrimEdge.Top,
+                    color = PlayerScrim.copy(alpha = TOP_BAR_SCRIM_ALPHA),
+                    disabled = preferences.edgeScrimDisabled,
+                ).padding(top = topPadding),
     ) {
         Row(
             modifier =

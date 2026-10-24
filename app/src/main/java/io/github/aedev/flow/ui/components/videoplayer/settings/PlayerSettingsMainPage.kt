@@ -12,7 +12,9 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.outlined.FormatAlignLeft
 import androidx.compose.material.icons.outlined.MoreTime
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.runtime.Composable
@@ -37,7 +39,7 @@ private const val AUDIO_ROWS = 1
 private const val CAPTION_ROWS = 2
 private const val OVERLAY_ROWS = 3
 private const val EFFECT_ROWS = 3
-private const val DISPLAY_ROWS = 1
+private const val DISPLAY_ROWS = 5
 
 @Composable
 internal fun PlayerSettingsMainPage(
@@ -45,6 +47,8 @@ internal fun PlayerSettingsMainPage(
     autoplayEnabled: Boolean,
     subtitlesEnabled: Boolean,
     ambientModeEnabled: Boolean,
+    qualityLongPressAudioTracksEnabled: Boolean,
+    onQualityLongPressAudioTracksToggle: (Boolean) -> Unit,
     onNavigateToPage: (PlayerSettingsPage) -> Unit,
     onShowSubtitleStyle: () -> Unit,
     onCastClick: () -> Unit,
@@ -55,6 +59,12 @@ internal fun PlayerSettingsMainPage(
     onSkipSilenceToggle: (Boolean) -> Unit,
     onStableVolumeToggle: (Boolean) -> Unit,
     onAmbientModeToggle: (Boolean) -> Unit,
+    edgeScrimDisabled: Boolean,
+    onEdgeScrimDisabledToggle: (Boolean) -> Unit,
+    hideCenterTransportControls: Boolean,
+    onHideCenterTransportControlsToggle: (Boolean) -> Unit,
+    miniPlayerLeftAligned: Boolean,
+    onMiniPlayerLeftAlignedToggle: (Boolean) -> Unit,
     sponsorBlockSegmentCount: Int = 0,
     sponsorBlockOffForVideo: Boolean = false,
     onSponsorBlockToggle: (off: Boolean) -> Unit = {},
@@ -215,6 +225,38 @@ internal fun PlayerSettingsMainPage(
             checked = ambientModeEnabled,
             shape = flowRowGroupShape(0, DISPLAY_ROWS),
             onCheckedChange = onAmbientModeToggle,
+        )
+        FlowSwitchRow(
+            leadingIcon = Icons.Filled.AudioFile,
+            title = stringResource(R.string.player_quality_audio_tracks_long_press_title),
+            supportingText = stringResource(R.string.player_quality_audio_tracks_long_press_summary),
+            checked = qualityLongPressAudioTracksEnabled,
+            shape = flowRowGroupShape(1, DISPLAY_ROWS),
+            onCheckedChange = onQualityLongPressAudioTracksToggle,
+        )
+        FlowSwitchRow(
+            leadingIcon = Icons.Filled.Tune,
+            title = stringResource(R.string.player_settings_disable_shading),
+            supportingText = stringResource(R.string.player_settings_disable_shading_subtitle),
+            checked = edgeScrimDisabled,
+            shape = flowRowGroupShape(2, DISPLAY_ROWS),
+            onCheckedChange = onEdgeScrimDisabledToggle,
+        )
+        FlowSwitchRow(
+            leadingIcon = Icons.Outlined.VisibilityOff,
+            title = stringResource(R.string.player_settings_hide_center_controls),
+            supportingText = stringResource(R.string.player_settings_hide_center_controls_subtitle),
+            checked = hideCenterTransportControls,
+            shape = flowRowGroupShape(3, DISPLAY_ROWS),
+            onCheckedChange = onHideCenterTransportControlsToggle,
+        )
+        FlowSwitchRow(
+            leadingIcon = Icons.Outlined.FormatAlignLeft,
+            title = stringResource(R.string.mini_player_left_aligned),
+            supportingText = stringResource(R.string.mini_player_left_aligned_subtitle),
+            checked = miniPlayerLeftAligned,
+            shape = flowRowGroupShape(4, DISPLAY_ROWS),
+            onCheckedChange = onMiniPlayerLeftAlignedToggle,
         )
     }
 }

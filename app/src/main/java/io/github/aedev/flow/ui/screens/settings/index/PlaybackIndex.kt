@@ -126,6 +126,7 @@ internal object PlaybackIndex {
         SettingEntry(
             key = "playback.long_press_speed",
             title = R.string.player_appearance_long_press_speed_title,
+            summary = R.string.player_appearance_long_press_speed_subtitle,
             keywords = R.string.settings_keywords_gestures,
             section = R.string.settings_section_speed,
             destination = page,
