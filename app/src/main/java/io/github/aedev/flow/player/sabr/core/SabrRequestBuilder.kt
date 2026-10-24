@@ -32,7 +32,12 @@ object SabrRequestBuilder {
                     state.selectedAudioItag > 0 && (selectionUnacknowledged || state.selectedAudioItag in state.initializedFormats)
                 },
             )
-        val buffered = if (isInitial) emptyList() else (state.videoBufferedRanges + state.audioBufferedRanges)
+        val buffered =
+            if (isInitial && !state.includeBufferedRangesInInitialRequest) {
+                emptyList()
+            } else {
+                state.videoBufferedRanges + state.audioBufferedRanges
+            }
         val timeSinceSeekMs =
             if (state.lastSeekAtMs > 0) {
                 (System.currentTimeMillis() - state.lastSeekAtMs).coerceAtLeast(0)

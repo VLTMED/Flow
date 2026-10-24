@@ -50,6 +50,8 @@ class SabrSessionState {
     var lastSeekAtMs: Long = 0
     var reloadToken: String? = null
 
+    var includeBufferedRangesInInitialRequest: Boolean = false
+
     // Server-provided pacing targets (NEXT_REQUEST_POLICY); defaults until first policy
     var targetAudioReadaheadMs: Long = 15_000
     var targetVideoReadaheadMs: Long = 15_000
@@ -233,6 +235,7 @@ class SabrSessionState {
     fun clearBufferedRanges() {
         audioBufferedRanges.clear()
         videoBufferedRanges.clear()
+        includeBufferedRangesInInitialRequest = false
     }
 
     fun storeInitSegment(
@@ -268,5 +271,6 @@ class SabrSessionState {
         consumedInitSegments.clear()
         lastSeekAtMs = 0
         reloadToken = null
+        includeBufferedRangesInInitialRequest = false
     }
 }

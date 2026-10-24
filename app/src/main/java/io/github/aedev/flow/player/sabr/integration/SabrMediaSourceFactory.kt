@@ -21,13 +21,14 @@ import io.github.aedev.flow.player.stream.VideoCodecUtils
 object SabrMediaSourceFactory {
     private const val TAG = "SabrMediaSrcFactory"
 
-    fun create(
+    internal fun create(
         info: SabrStreamInfo,
         videoId: String,
         durationMs: Long,
         startPositionMs: Long = 0L,
         mediaId: String = videoId,
         mediaMetadata: MediaMetadata = MediaMetadata.EMPTY,
+        segmentCache: SabrSessionSegmentCache? = null,
     ): SabrMediaSourceResult {
         val sessionState =
             SabrSessionState().apply {
@@ -74,16 +75,20 @@ object SabrMediaSourceFactory {
         val sessionCpn = sessionState.cpn
         val reloadClient = SabrClientIdentity.sabrClientFor(info.clientNameId)
         val orchestrator =
-            SabrOrchestrator(controller) { event ->
-                InnerTubeVideoStreamExtractor.resolveSabrDownload(
-                    videoId = videoId,
-                    targetHeight = reloadHeight,
-                    preferredCodec = reloadCodec,
-                    reloadToken = event.reloadToken,
-                    cpn = sessionCpn.ifEmpty(SabrCpn::generate),
-                    client = reloadClient,
-                )
-            }
+            SabrOrchestrator(
+                controller = controller,
+                reloadResolver = { event ->
+                    InnerTubeVideoStreamExtractor.resolveSabrDownload(
+                        videoId = videoId,
+                        targetHeight = reloadHeight,
+                        preferredCodec = reloadCodec,
+                        reloadToken = event.reloadToken,
+                        cpn = sessionCpn.ifEmpty(SabrCpn::generate),
+                        client = reloadClient,
+                    )
+                },
+                segmentCache = segmentCache,
+            )
 
         val audioDataSourceFactory =
             SabrExoPlayerDataSource

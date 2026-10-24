@@ -20,6 +20,7 @@ import io.github.aedev.flow.player.datasource.RefusedStreamSwapper
 import io.github.aedev.flow.player.datasource.StreamSwapTable
 import io.github.aedev.flow.player.datasource.YouTubeHttpDataSource
 import io.github.aedev.flow.player.error.StreamDenialKind
+import io.github.aedev.flow.player.sabr.integration.SabrSessionSegmentCache
 import io.github.aedev.flow.player.stream.ClientGateTracker
 import io.github.aedev.flow.player.stream.InnerTubeVideoStreamExtractor
 import io.github.aedev.flow.player.stream.TizenStreamResolver
@@ -116,6 +117,8 @@ class PlayerCacheManager(
 
     private var cache: SimpleCache? = null
 
+    private val sabrSessionSegmentCache = SabrSessionSegmentCache(cacheProvider = { cache })
+
     // Data source factories
     private var sharedDataSourceFactory: DataSource.Factory? = null
     private var sharedDashDataSourceFactory: DataSource.Factory? = null
@@ -208,11 +211,12 @@ class PlayerCacheManager(
 
     /** Drops only namespaced cache keys owned by [videoId], leaving Shorts and downloads alone. */
     fun clearVideo(videoId: String) {
-        val cache = cache ?: return
         if (videoId.isBlank()) return
-        val keys = cache.keys.filter { VideoCacheKeys.belongsToVideo(it, videoId) }
+        sabrSessionSegmentCache.clearVideo(videoId)
+        val activeCache = cache ?: return
+        val keys = activeCache.keys.filter { VideoCacheKeys.belongsToVideo(it, videoId) }
         keys.forEach { key ->
-            runCatching { cache.removeResource(key) }.onFailure { Log.w(TAG, "Could not clear a cached stream of $videoId", it) }
+            runCatching { activeCache.removeResource(key) }.onFailure { Log.w(TAG, "Could not clear a cached stream of $videoId", it) }
         }
         Log.d(TAG, "Cleared ${keys.size} cached streams of $videoId")
     }
@@ -221,9 +225,12 @@ class PlayerCacheManager(
 
     fun closeVideoSession() = videoSession.close()
 
+    internal fun getSabrSessionSegmentCache(): SabrSessionSegmentCache = sabrSessionSegmentCache
+
     /** Clears all scoped stream/preload data when the complete player session is released. */
     fun clearAllVideoSessionCache() {
         videoSession.close()
+        sabrSessionSegmentCache.clearAll()
         val cache = cache ?: return
         val keys = cache.keys.filter(VideoCacheKeys::isSessionKey)
         keys.forEach { key ->

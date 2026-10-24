@@ -39,6 +39,7 @@ data class SabrSegment(
     val durationMs: Long,
     val sequenceNumber: Int,
     val data: ByteArray,
+    val isInitSegment: Boolean = false,
 )
 
 sealed class SabrEvent {
@@ -503,6 +504,7 @@ class SabrStreamController(
                 durationMs = header.durationMs,
                 sequenceNumber = header.sequenceNumber,
                 data = data,
+                isInitSegment = header.isInitSegment,
             )
 
         // Init segments are not part of the media timeline — never report them as buffered

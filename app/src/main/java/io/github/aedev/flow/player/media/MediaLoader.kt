@@ -449,6 +449,7 @@ class MediaLoader(
                     startPositionMs = startPositionMs,
                     mediaId = mediaId,
                     mediaMetadata = mediaMetadata,
+                    segmentCache = cacheManager?.getSabrSessionSegmentCache(),
                 )
             activeSabrOrchestrator = result.orchestrator
             result.orchestrator.onError = { _, msg, recoverable ->

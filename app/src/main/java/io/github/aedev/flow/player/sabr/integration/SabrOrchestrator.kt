@@ -3,6 +3,7 @@ package io.github.aedev.flow.player.sabr.integration
 import android.util.Log
 import io.github.aedev.flow.player.sabr.core.SabrEvent
 import io.github.aedev.flow.player.sabr.core.SabrStreamController
+import io.github.aedev.flow.player.sabr.proto.FormatBufferedRange
 import io.github.aedev.flow.player.sabr.proto.FormatInitializationMetadata
 import io.github.aedev.flow.utils.potoken.WebPoTokenSession
 import kotlinx.coroutines.CoroutineScope
@@ -15,10 +16,12 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-class SabrOrchestrator(
+class SabrOrchestrator internal constructor(
     private val controller: SabrStreamController,
     private val reloadResolver: (suspend (SabrEvent.ReloadRequired) -> SabrStreamInfo?)? = null,
+    private val segmentCache: SabrSessionSegmentCache? = null,
 ) {
     companion object {
         private const val TAG = "SabrOrchestrator"
@@ -28,6 +31,9 @@ class SabrOrchestrator(
         private const val MIN_TARGET_READAHEAD_MS = 5_000L
         private const val URL_EXPIRY_MARGIN_MS = 60_000L
         private const val MAX_PLAYER_RESPONSE_RELOADS = 2
+        private const val INITIAL_CACHE_REPLAY_WINDOW_MS = 10_000L
+        private const val MAX_CACHED_REPLAY_BUFFER_BYTES = 24L * 1024L * 1024L
+        private const val CACHED_REPLAY_BACKPRESSURE_INTERVAL_MS = 100L
     }
 
     val audioBuffer = SabrSegmentBuffer()
@@ -47,6 +53,17 @@ class SabrOrchestrator(
     private var playerResponseReloadJob: Deferred<Boolean>? = null
     private var playerResponseReloads = 0
     private var consecutiveErrors = 0
+
+    private data class CachedReplayProgress(
+        val nextAudioSegmentIndex: Int,
+        val nextVideoSegmentIndex: Int,
+    )
+
+    @Volatile
+    private var cachedReplayInitialRequestPending = false
+
+    @Volatile
+    private var playbackPositionDuringInitialReplayRequestMs = 0L
 
     @Volatile
     var isRunning = false
@@ -72,6 +89,8 @@ class SabrOrchestrator(
         videoInitReceived = false
         audioBuffer.reset()
         videoBuffer.reset()
+        cachedReplayInitialRequestPending = false
+        playbackPositionDuringInitialReplayRequestMs = controller.sessionState.playheadPositionMs
 
         val newScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
         scope = newScope
@@ -84,7 +103,24 @@ class SabrOrchestrator(
             }
 
         newScope.launch(Dispatchers.IO) {
+            val sessionState = controller.sessionState
+            val requestedPositionMs = sessionState.playheadPositionMs
+            val replay =
+                segmentCache?.replayForSeek(
+                    videoId = sessionState.videoId,
+                    audioFormatId = sessionState.selectedAudioFormatId,
+                    videoFormatId = sessionState.selectedVideoFormatId,
+                    targetPositionMs = requestedPositionMs,
+                )
+            if (replay != null) {
+                val progress = seedCachedReplay(replay, requestedPositionMs)
+                startCachedReplayFeeder(newScope, replay, progress)
+            }
             controller.startSession()
+            if (cachedReplayInitialRequestPending) {
+                sessionState.playheadPositionMs = playbackPositionDuringInitialReplayRequestMs
+                cachedReplayInitialRequestPending = false
+            }
             startFollowUpLoop()
         }
     }
@@ -110,7 +146,11 @@ class SabrOrchestrator(
     }
 
     fun updatePlayhead(positionMs: Long) {
-        controller.updatePlayheadPosition(positionMs)
+        if (cachedReplayInitialRequestPending) {
+            playbackPositionDuringInitialReplayRequestMs = positionMs
+        } else {
+            controller.updatePlayheadPosition(positionMs)
+        }
     }
 
     /** Background audio-only mode: tells the server to stop sending video segments. */
@@ -118,7 +158,131 @@ class SabrOrchestrator(
         controller.sessionState.enabledTrackTypes = if (enabled) 1 else -1
     }
 
-    private fun handleEvent(event: SabrEvent) {
+    private fun seedCachedReplay(
+        replay: SabrCachedReplay,
+        requestedPositionMs: Long,
+    ): CachedReplayProgress {
+        val sessionState = controller.sessionState
+        audioBuffer.appendSegment(replay.audioInitSegment.data)
+        videoBuffer.appendSegment(replay.videoInitSegment.data)
+        sessionState.markSegmentConsumed(replay.audioInitSegment.itag, replay.audioInitSegment.sequenceNumber, isInit = true)
+        sessionState.markSegmentConsumed(replay.videoInitSegment.itag, replay.videoInitSegment.sequenceNumber, isInit = true)
+        audioInitReceived = true
+        videoInitReceived = true
+
+        replay.audioSegments.forEach { segment ->
+            sessionState.addBufferedRange(
+                isAudio = true,
+                range =
+                    FormatBufferedRange(
+                        formatId = sessionState.selectedAudioFormatId,
+                        startTimeMs = segment.timeRangeStartMs,
+                        durationMs = segment.durationMs,
+                        startSequence = segment.sequenceNumber,
+                        endSequence = segment.sequenceNumber,
+                    ),
+            )
+        }
+        replay.videoSegments.forEach { segment ->
+            sessionState.addBufferedRange(
+                isAudio = false,
+                range =
+                    FormatBufferedRange(
+                        formatId = sessionState.selectedVideoFormatId,
+                        startTimeMs = segment.timeRangeStartMs,
+                        durationMs = segment.durationMs,
+                        startSequence = segment.sequenceNumber,
+                        endSequence = segment.sequenceNumber,
+                    ),
+            )
+        }
+
+        val nextAudioSegmentIndex = appendInitialCachedWindow(replay.audioSegments, audioBuffer, requestedPositionMs)
+        val nextVideoSegmentIndex = appendInitialCachedWindow(replay.videoSegments, videoBuffer, requestedPositionMs)
+
+        sessionState.includeBufferedRangesInInitialRequest = true
+        sessionState.playheadPositionMs = replay.requestPositionMs
+        playbackPositionDuringInitialReplayRequestMs = requestedPositionMs
+        cachedReplayInitialRequestPending = true
+        Log.i(
+            TAG,
+            "SABR cache rewind hit video=${sessionState.videoId} audio=${sessionState.selectedAudioItag} " +
+                "videoFormat=${sessionState.selectedVideoItag} segments=${replay.audioSegments.size}/${replay.videoSegments.size} " +
+                "from=${requestedPositionMs}ms requestFrom=${replay.requestPositionMs}ms",
+        )
+        return CachedReplayProgress(nextAudioSegmentIndex, nextVideoSegmentIndex)
+    }
+
+    private fun appendInitialCachedWindow(
+        segments: List<SabrCachedSegmentRef>,
+        buffer: SabrSegmentBuffer,
+        requestedPositionMs: Long,
+    ): Int {
+        var nextIndex = 0
+        var bufferedUntilMs = requestedPositionMs
+        val sessionState = controller.sessionState
+        while (nextIndex < segments.size &&
+            bufferedUntilMs < requestedPositionMs + INITIAL_CACHE_REPLAY_WINDOW_MS &&
+            buffer.bufferedByteCount < MAX_CACHED_REPLAY_BUFFER_BYTES
+        ) {
+            val ref = segments[nextIndex]
+            val segment = segmentCache?.readCachedSegment(ref) ?: break
+            if (sessionState.markSegmentConsumed(segment.itag, segment.sequenceNumber, isInit = false)) {
+                buffer.appendSegment(segment.data)
+            }
+            bufferedUntilMs = ref.endMs
+            nextIndex++
+        }
+        return nextIndex
+    }
+
+    private fun startCachedReplayFeeder(
+        ownerScope: CoroutineScope,
+        replay: SabrCachedReplay,
+        progress: CachedReplayProgress,
+    ) {
+        ownerScope.launch(Dispatchers.IO) {
+            launch {
+                appendRemainingCachedSegments(
+                    replay.audioSegments,
+                    progress.nextAudioSegmentIndex,
+                    audioBuffer,
+                )
+            }
+            launch {
+                appendRemainingCachedSegments(
+                    replay.videoSegments,
+                    progress.nextVideoSegmentIndex,
+                    videoBuffer,
+                )
+            }
+        }
+    }
+
+    private suspend fun appendRemainingCachedSegments(
+        segments: List<SabrCachedSegmentRef>,
+        startIndex: Int,
+        buffer: SabrSegmentBuffer,
+    ) {
+        val cache = segmentCache ?: return
+        for (ref in segments.drop(startIndex)) {
+            while (buffer.bufferedByteCount >= MAX_CACHED_REPLAY_BUFFER_BYTES) {
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                delay(CACHED_REPLAY_BACKPRESSURE_INTERVAL_MS)
+            }
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            val segment = cache.readCachedSegment(ref)
+            if (segment == null) {
+                Log.w(TAG, "Cached SABR segment evicted before replay: ${ref.itag}/${ref.sequenceNumber}")
+                return
+            }
+            if (controller.sessionState.markSegmentConsumed(segment.itag, segment.sequenceNumber, isInit = false)) {
+                buffer.appendSegment(segment.data)
+            }
+        }
+    }
+
+    private suspend fun handleEvent(event: SabrEvent) {
         when (event) {
             is SabrEvent.FormatInitialized -> {
                 val metadata = event.metadata
@@ -143,10 +307,23 @@ class SabrOrchestrator(
             is SabrEvent.SegmentReady -> {
                 val segment = event.segment
                 consecutiveErrors = 0
+                val sessionState = controller.sessionState
+                val formatId = if (segment.isAudio) sessionState.selectedAudioFormatId else sessionState.selectedVideoFormatId
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        if (segment.isInitSegment) {
+                            segmentCache?.storeInitialization(sessionState.videoId, formatId, segment)
+                        } else {
+                            segmentCache?.storeSegment(sessionState.videoId, formatId, segment)
+                        }
+                    }.onFailure { Log.w(TAG, "Could not cache SABR payload segment", it) }
+                }
                 if (segment.isAudio) {
                     audioBuffer.appendSegment(segment.data)
+                    if (segment.isInitSegment) audioInitReceived = true
                 } else {
                     videoBuffer.appendSegment(segment.data)
+                    if (segment.isInitSegment) videoInitReceived = true
                 }
             }
 
