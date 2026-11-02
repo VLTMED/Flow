@@ -48,6 +48,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.pluralStringResource
@@ -56,6 +57,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.aedev.flow.R
@@ -350,48 +352,54 @@ private fun ReplyThread(
  * next reply when there is one.
  */
 @Composable
-private fun ThreadConnector(
+internal fun ThreadConnector(
     color: Color,
     continuesBelow: Boolean,
     modifier: Modifier = Modifier,
 ) {
     Canvas(modifier = modifier.width(ThreadConnectorWidth)) {
-        val stroke = ThreadLineWidth.toPx()
-        val elbowY = ThreadElbowY.toPx()
-        val radius = ThreadElbowRadius.toPx()
-        val x = stroke / 2f
+        val mirrorForRtl = layoutDirection == LayoutDirection.Rtl
+        val mirrorPivot = Offset(size.width / 2f, 0f)
+        withTransform({
+            if (mirrorForRtl) scale(scaleX = -1f, scaleY = 1f, pivot = mirrorPivot)
+        }) {
+            val stroke = ThreadLineWidth.toPx()
+            val elbowY = ThreadElbowY.toPx()
+            val radius = ThreadElbowRadius.toPx()
+            val x = stroke / 2f
 
-        drawLine(
-            color = color,
-            start = Offset(x, 0f),
-            end = Offset(x, (elbowY - radius).coerceAtLeast(0f)),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round,
-        )
-        drawArc(
-            color = color,
-            startAngle = 180f,
-            sweepAngle = -90f,
-            useCenter = false,
-            topLeft = Offset(x, elbowY - 2 * radius),
-            size = Size(radius * 2, radius * 2),
-            style = Stroke(width = stroke, cap = StrokeCap.Round),
-        )
-        drawLine(
-            color = color,
-            start = Offset(x + radius, elbowY),
-            end = Offset(size.width, elbowY),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round,
-        )
-        if (continuesBelow) {
             drawLine(
                 color = color,
-                start = Offset(x, (elbowY - radius).coerceAtLeast(0f)),
-                end = Offset(x, size.height),
+                start = Offset(x, 0f),
+                end = Offset(x, (elbowY - radius).coerceAtLeast(0f)),
                 strokeWidth = stroke,
                 cap = StrokeCap.Round,
             )
+            drawArc(
+                color = color,
+                startAngle = 180f,
+                sweepAngle = -90f,
+                useCenter = false,
+                topLeft = Offset(x, elbowY - 2 * radius),
+                size = Size(radius * 2, radius * 2),
+                style = Stroke(width = stroke, cap = StrokeCap.Round),
+            )
+            drawLine(
+                color = color,
+                start = Offset(x + radius, elbowY),
+                end = Offset(size.width, elbowY),
+                strokeWidth = stroke,
+                cap = StrokeCap.Round,
+            )
+            if (continuesBelow) {
+                drawLine(
+                    color = color,
+                    start = Offset(x, (elbowY - radius).coerceAtLeast(0f)),
+                    end = Offset(x, size.height),
+                    strokeWidth = stroke,
+                    cap = StrokeCap.Round,
+                )
+            }
         }
     }
 }

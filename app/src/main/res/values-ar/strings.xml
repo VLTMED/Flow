@@ -1560,6 +1560,7 @@
     <string name="saved_to_library">تم الحفظ في المكتبة</string>
     <string name="failed_to_save_to_library">فشل الحفظ إلي المكتبة</string>
     <string name="open">مفتوح</string>
+    <string name="open_playlist">فتح قائمة التشغيل</string>
     <string name="music_quality_header">جودة صوت الموسيقى</string>
     <string name="music_quality_auto">تلقائي</string>
     <string name="music_quality_high">عالي</string>

@@ -1,9 +1,15 @@
 package io.github.aedev.flow.ui.screens.library
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -24,6 +30,7 @@ import io.github.aedev.flow.ui.components.library.LibraryShelf
 import io.github.aedev.flow.ui.components.library.LibraryShelfPlaceholder
 import io.github.aedev.flow.ui.components.library.LibraryShortsShelf
 import io.github.aedev.flow.ui.components.library.LibraryVideoCard
+import io.github.aedev.flow.ui.components.library.PlaylistActionsMenu
 import kotlinx.coroutines.flow.StateFlow
 
 @Composable
@@ -36,6 +43,7 @@ internal fun LibraryMediaShelfRoute(
     onDownloadedVideoClick: (List<DownloadedVideo>, Int) -> Unit,
     onDownloadedMusicClick: (List<DownloadedTrack>, Int) -> Unit,
     emptyMessage: String? = null,
+    onRemoveVideo: ((Video) -> Unit)? = null,
 ) {
     val items by itemsFlow.collectAsStateWithLifecycle()
     val title = section.title
@@ -53,6 +61,12 @@ internal fun LibraryMediaShelfRoute(
         }
 
         else -> {
+            val removeVideoLabel =
+                if (section == LibrarySection.HISTORY) {
+                    stringResource(R.string.remove_from_history)
+                } else {
+                    null
+                }
             LibraryMediaShelf(
                 title = title,
                 icon = section.icon,
@@ -60,6 +74,8 @@ internal fun LibraryMediaShelfRoute(
                 sourceName = title,
                 onTitleClick = onTitleClick,
                 onVideoClick = onVideoClick,
+                onRemoveVideo = onRemoveVideo,
+                removeVideoLabel = removeVideoLabel,
                 onMusicClick = onMusicClick,
                 onDownloadedVideoClick = onDownloadedVideoClick,
                 onDownloadedMusicClick = onDownloadedMusicClick,
@@ -76,6 +92,7 @@ internal fun LibraryPlaylistsShelf(
     onTitleClick: () -> Unit,
     onVideoPlaylistClick: (String) -> Unit,
     onMusicPlaylistClick: (String) -> Unit,
+    onDeletePlaylist: ((PlaylistInfo) -> Unit)? = null,
 ) {
     val videoPlaylists = videoPlaylistsFlow?.collectAsStateWithLifecycle()?.value
     val musicPlaylists = musicPlaylistsFlow?.collectAsStateWithLifecycle()?.value
@@ -97,25 +114,52 @@ internal fun LibraryPlaylistsShelf(
             key = { "video-${it.id}" },
             contentType = { "video-playlist" },
         ) { playlist ->
-            PlaylistCard(
-                playlist = playlist,
-                onClick = { onVideoPlaylistClick(playlist.id) },
-                layout = PlaylistCardLayout.SHELF,
-                modifier = Modifier.width(cardWidth),
-            )
+            var showActions by remember(playlist.id) { mutableStateOf(false) }
+            Box(modifier = Modifier.width(cardWidth)) {
+                PlaylistCard(
+                    playlist = playlist,
+                    onClick = { onVideoPlaylistClick(playlist.id) },
+                    onLongClick = { showActions = true },
+                    layout = PlaylistCardLayout.SHELF,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                PlaylistActionsMenu(
+                    expanded = showActions,
+                    onDismiss = { showActions = false },
+                    onDownload = null,
+                    onRename = null,
+                    onDelete = onDeletePlaylist?.let { delete -> { delete(playlist) } },
+                    onOpen = { onVideoPlaylistClick(playlist.id) },
+                    modifier = Modifier.align(Alignment.TopEnd),
+                )
+            }
         }
         items(
             items = musicPlaylists.orEmpty(),
             key = { "music-${it.id}" },
             contentType = { "music-playlist" },
         ) { playlist ->
-            LibraryAlbumCard(
-                title = playlist.name,
-                subtitle = stringResource(R.string.tracks_count_template, playlist.videoCount),
-                thumbnailUrl = playlist.thumbnailUrl,
-                onClick = { onMusicPlaylistClick(playlist.id) },
-                artworkSize = cardWidth * 9f / 16f,
-            )
+            val artworkSize = cardWidth * 9f / 16f
+            var showActions by remember(playlist.id) { mutableStateOf(false) }
+            Box(modifier = Modifier.width(artworkSize)) {
+                LibraryAlbumCard(
+                    title = playlist.name,
+                    subtitle = stringResource(R.string.tracks_count_template, playlist.videoCount),
+                    thumbnailUrl = playlist.thumbnailUrl,
+                    onClick = { onMusicPlaylistClick(playlist.id) },
+                    artworkSize = artworkSize,
+                    onLongClick = { showActions = true },
+                )
+                PlaylistActionsMenu(
+                    expanded = showActions,
+                    onDismiss = { showActions = false },
+                    onDownload = null,
+                    onRename = null,
+                    onDelete = onDeletePlaylist?.let { delete -> { delete(playlist) } },
+                    onOpen = { onMusicPlaylistClick(playlist.id) },
+                    modifier = Modifier.align(Alignment.TopEnd),
+                )
+            }
         }
     }
 }
@@ -126,9 +170,17 @@ internal fun LibraryVideoShelf(
     videosFlow: StateFlow<List<Video>?>,
     onTitleClick: () -> Unit,
     onVideoClick: (Video) -> Unit,
+    onRemoveVideo: (Video) -> Unit,
 ) {
     val videos by videosFlow.collectAsStateWithLifecycle()
     val title = section.title
+    val removeVideoLabel =
+        stringResource(
+            when (section) {
+                LibrarySection.WATCH_LATER -> R.string.remove_from_watch_later
+                else -> R.string.unlike
+            },
+        )
     when {
         videos == null -> {
             LibraryShelfPlaceholder(title = title, icon = section.icon)
@@ -153,6 +205,8 @@ internal fun LibraryVideoShelf(
                         video = video,
                         onClick = { onVideoClick(video) },
                         width = cardWidth,
+                        onRemoveFromCollection = { onRemoveVideo(video) },
+                        removeFromCollectionLabel = removeVideoLabel,
                     )
                 }
             }

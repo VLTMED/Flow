@@ -3,6 +3,7 @@ package io.github.aedev.flow.ui.components.library
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
@@ -61,14 +62,25 @@ internal fun PlaylistActionsMenu(
     onDismiss: () -> Unit,
     onDownload: (() -> Unit)?,
     onRename: (() -> Unit)?,
-    onDelete: () -> Unit,
+    onDelete: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    onOpen: (() -> Unit)? = null,
 ) {
     DropdownMenu(
         expanded = expanded,
         onDismissRequest = onDismiss,
         modifier = modifier,
     ) {
+        if (onOpen != null) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.open_playlist)) },
+                onClick = {
+                    onDismiss()
+                    onOpen()
+                },
+                leadingIcon = { Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null) },
+            )
+        }
         if (onDownload != null) {
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.download)) },
@@ -89,13 +101,15 @@ internal fun PlaylistActionsMenu(
                 leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
             )
         }
-        DropdownMenuItem(
-            text = { Text(stringResource(R.string.action_delete)) },
-            onClick = {
-                onDismiss()
-                onDelete()
-            },
-            leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
-        )
+        if (onDelete != null) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.action_delete)) },
+                onClick = {
+                    onDismiss()
+                    onDelete()
+                },
+                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
+            )
+        }
     }
 }

@@ -57,8 +57,8 @@ android {
         applicationId = "io.github.aedev.flow.independent"
         minSdk = 26
         targetSdk = 36
-        versionCode = 28
-        versionName = "3.0.4"
+        versionCode = 30
+        versionName = "3.0.6"
 
         buildConfigField("int", "NIGHTLY_RUN", "0")
         buildConfigField("String", "APP_LANGUAGE_TAGS", "\"${(listOf("en") + translatedLocaleTags()).joinToString(",")}\"")

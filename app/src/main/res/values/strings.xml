@@ -126,6 +126,7 @@
     <string name="saved_to_library">Saved to library</string>
     <string name="failed_to_save_to_library">Failed to save to library</string>
     <string name="open">Open</string>
+    <string name="open_playlist">Open playlist</string>
     <string name="up_next">UP NEXT</string>
     <string name="lyrics">LYRICS</string>
     <string name="music_player_tab_up_next">Up next</string>

@@ -1,7 +1,6 @@
 package io.github.aedev.flow.ui.components.library
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,6 +17,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,11 +32,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import io.github.aedev.flow.R
+import io.github.aedev.flow.data.localmedia.LocalMediaIds
 import io.github.aedev.flow.data.model.Video
 import io.github.aedev.flow.ui.components.shared.DurationBadge
 import io.github.aedev.flow.ui.components.shared.MediaIconBadge
 import io.github.aedev.flow.ui.components.shared.VideoThumbnailImage
 import io.github.aedev.flow.ui.components.shared.feedStripCardWidth
+import io.github.aedev.flow.ui.components.shared.quickactions.VideoQuickActionsBottomSheet
 
 internal val LibraryShelfCardWidth = 220.dp
 internal val LibraryShelfArtworkHeight = LibraryShelfCardWidth * 9f / 16f
@@ -47,13 +52,26 @@ internal fun LibraryVideoCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     width: Dp = LibraryShelfCardWidth,
+    onLongClick: (() -> Unit)? = null,
+    onRemoveFromCollection: (() -> Unit)? = null,
+    removeFromCollectionLabel: String? = null,
 ) {
+    var showQuickActions by remember(video.id) { mutableStateOf(false) }
+    val canShowQuickActions =
+        onRemoveFromCollection != null && removeFromCollectionLabel != null && !LocalMediaIds.isLocal(video.id)
     Column(
         modifier =
             modifier
                 .width(width)
-                .clickable(onClick = onClick)
-                .padding(vertical = 4.dp),
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick =
+                        onLongClick ?: if (canShowQuickActions) {
+                            { showQuickActions = true }
+                        } else {
+                            null
+                        },
+                ).padding(vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Box(
@@ -100,6 +118,15 @@ internal fun LibraryVideoCard(
                 overflow = TextOverflow.Ellipsis,
             )
         }
+    }
+
+    if (showQuickActions) {
+        VideoQuickActionsBottomSheet(
+            video = video,
+            onDismiss = { showQuickActions = false },
+            onRemoveFromCollection = onRemoveFromCollection,
+            removeFromCollectionLabel = removeFromCollectionLabel,
+        )
     }
 }
 

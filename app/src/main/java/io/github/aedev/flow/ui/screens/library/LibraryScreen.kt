@@ -19,6 +19,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.pluralStringResource
@@ -27,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.aedev.flow.R
+import io.github.aedev.flow.data.model.PlaylistInfo
 import io.github.aedev.flow.data.model.Video
 import io.github.aedev.flow.data.music.DownloadedTrack
 import io.github.aedev.flow.data.music.model.MusicTrack
@@ -38,6 +42,7 @@ import io.github.aedev.flow.ui.components.layout.navigation.FlowTab
 import io.github.aedev.flow.ui.components.layout.topbar.FlowTopBar
 import io.github.aedev.flow.ui.components.library.LibraryNavigationRow
 import io.github.aedev.flow.ui.components.library.LibrarySection
+import io.github.aedev.flow.ui.components.shared.DeleteCollectionDialog
 import io.github.aedev.flow.ui.components.shared.FlowEmptyState
 import io.github.aedev.flow.ui.components.shared.FlowMaxContentWidth
 import io.github.aedev.flow.ui.components.shared.MediaKind
@@ -80,6 +85,7 @@ fun LibraryScreen(
     val hiddenSections by viewModel.hiddenSections.collectAsStateWithLifecycle()
     val locale = LocalConfiguration.current.locales[0]
     val listState = rememberLazyListState()
+    var playlistToDelete by remember { mutableStateOf<PlaylistInfo?>(null) }
     OnTabReselected(FlowTab.Library.route) { listState.animateScrollToItem(0) }
     val openSection: (LibrarySection) -> Unit = { section ->
         when (section) {
@@ -157,6 +163,7 @@ fun LibraryScreen(
                     onDownloadedVideoClick = onDownloadedVideoClick,
                     onDownloadedMusicClick = onDownloadedMusicClick,
                     onSavedShortClick = onSavedShortClick,
+                    onDeletePlaylist = { playlistToDelete = it },
                 )
             } else if (contentSections.isNotEmpty()) {
                 item(key = "sections", contentType = "navigation-section") {
@@ -197,6 +204,16 @@ fun LibraryScreen(
                 }
             }
         }
+        playlistToDelete?.let { playlist ->
+            DeleteCollectionDialog(
+                collectionName = playlist.name,
+                onDismiss = { playlistToDelete = null },
+                onConfirm = {
+                    viewModel.deletePlaylist(playlist.id)
+                    playlistToDelete = null
+                },
+            )
+        }
     }
 }
 
@@ -211,6 +228,7 @@ internal fun LazyListScope.libraryShelves(
     onDownloadedVideoClick: (List<DownloadedVideo>, Int) -> Unit,
     onDownloadedMusicClick: (List<DownloadedTrack>, Int) -> Unit,
     onSavedShortClick: (Video) -> Unit,
+    onDeletePlaylist: ((PlaylistInfo) -> Unit)? = null,
 ) {
     sections.forEach { section ->
         val onTitleClick = { onOpenSection(section) }
@@ -225,6 +243,12 @@ internal fun LazyListScope.libraryShelves(
                         onMusicClick = onMusicClick,
                         onDownloadedVideoClick = onDownloadedVideoClick,
                         onDownloadedMusicClick = onDownloadedMusicClick,
+                        onRemoveVideo =
+                            if (section == LibrarySection.HISTORY) {
+                                { video -> viewModel.removeHistoryVideo(video.id) }
+                            } else {
+                                null
+                            },
                     )
                 }
             }
@@ -238,6 +262,7 @@ internal fun LazyListScope.libraryShelves(
                         onTitleClick = onTitleClick,
                         onVideoPlaylistClick = onPlaylistClick,
                         onMusicPlaylistClick = onMusicPlaylistClick,
+                        onDeletePlaylist = onDeletePlaylist,
                     )
                 }
             }
@@ -249,6 +274,13 @@ internal fun LazyListScope.libraryShelves(
                         videosFlow = if (section == LibrarySection.WATCH_LATER) viewModel.watchLater else viewModel.likedVideos,
                         onTitleClick = onTitleClick,
                         onVideoClick = onVideoClick,
+                        onRemoveVideo = { video ->
+                            if (section == LibrarySection.WATCH_LATER) {
+                                viewModel.removeWatchLaterVideo(video.id)
+                            } else {
+                                viewModel.unlikeVideo(video.id)
+                            }
+                        },
                     )
                 }
             }

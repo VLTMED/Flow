@@ -1,7 +1,7 @@
 package io.github.aedev.flow.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -60,6 +60,7 @@ fun PlaylistCard(
     playlist: PlaylistInfo,
     onClick: () -> Unit,
     onDeleteClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
     layout: PlaylistCardLayout = PlaylistCardLayout.LIST,
     modifier: Modifier = Modifier,
     useInternalPadding: Boolean = true,
@@ -71,6 +72,7 @@ fun PlaylistCard(
         videoCount = playlist.videoCount,
         onClick = onClick,
         onDeleteClick = onDeleteClick,
+        onLongClick = onLongClick,
         layout = layout,
         modifier = modifier,
         useInternalPadding = useInternalPadding,
@@ -93,6 +95,7 @@ fun PlaylistCard(
         isCourse = playlist.isCourse,
         onClick = onClick,
         onDeleteClick = null,
+        onLongClick = null,
         layout = layout,
         modifier = modifier,
         useInternalPadding = useInternalPadding,
@@ -107,6 +110,7 @@ private fun PlaylistCardContent(
     videoCount: Int,
     onClick: () -> Unit,
     onDeleteClick: (() -> Unit)?,
+    onLongClick: (() -> Unit)?,
     layout: PlaylistCardLayout,
     modifier: Modifier,
     useInternalPadding: Boolean,
@@ -124,7 +128,7 @@ private fun PlaylistCardContent(
             modifier =
                 Modifier
                     .then(modifier)
-                    .clickable(onClick = onClick)
+                    .combinedClickable(onClick = onClick, onLongClick = onLongClick)
                     .padding(vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -156,7 +160,7 @@ private fun PlaylistCardContent(
         modifier =
             modifier
                 .fillMaxWidth()
-                .clickable(onClick = onClick)
+                .combinedClickable(onClick = onClick, onLongClick = onLongClick)
                 .padding(vertical = 4.dp)
                 .then(
                     if (useInternalPadding) {

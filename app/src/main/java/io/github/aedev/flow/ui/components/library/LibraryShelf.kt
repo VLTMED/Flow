@@ -162,6 +162,8 @@ internal fun LibraryMediaShelf(
     sourceName: String,
     onTitleClick: () -> Unit,
     onVideoClick: (Video) -> Unit,
+    onRemoveVideo: ((Video) -> Unit)? = null,
+    removeVideoLabel: String? = null,
     onMusicClick: (MusicTrack, List<MusicTrack>, String) -> Unit,
     onDownloadedVideoClick: (List<DownloadedVideo>, Int) -> Unit,
     onDownloadedMusicClick: (List<DownloadedTrack>, Int) -> Unit,
@@ -202,6 +204,8 @@ internal fun LibraryMediaShelf(
                         video = item.video,
                         onClick = { onVideoClick(item.video) },
                         width = cardWidth,
+                        onRemoveFromCollection = onRemoveVideo?.let { remove -> { remove(item.video) } },
+                        removeFromCollectionLabel = removeVideoLabel,
                     )
                 }
 

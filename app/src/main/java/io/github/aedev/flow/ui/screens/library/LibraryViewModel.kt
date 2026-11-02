@@ -61,9 +61,9 @@ internal data class LibraryCounts(
 class LibraryViewModel
     @Inject
     constructor(
-        playlistRepository: PlaylistRepository,
-        likedVideosRepository: LikedVideosRepository,
-        viewHistory: ViewHistory,
+        private val playlistRepository: PlaylistRepository,
+        private val likedVideosRepository: LikedVideosRepository,
+        private val viewHistory: ViewHistory,
         videoDownloadManager: VideoDownloadManager,
         musicDownloadManager: MusicDownloadManager,
         shortsContentFilter: ShortsContentFilter,
@@ -93,6 +93,22 @@ class LibraryViewModel
             val period = _recapReady.value ?: return
             _recapReady.value = null
             viewModelScope.launch { recapReadiness.markShown(period) }
+        }
+
+        internal fun removeHistoryVideo(videoId: String) {
+            viewModelScope.launch { viewHistory.clearVideoHistory(videoId) }
+        }
+
+        internal fun removeWatchLaterVideo(videoId: String) {
+            viewModelScope.launch { playlistRepository.removeFromWatchLater(videoId) }
+        }
+
+        internal fun unlikeVideo(videoId: String) {
+            viewModelScope.launch { likedVideosRepository.removeLikeState(videoId) }
+        }
+
+        internal fun deletePlaylist(playlistId: String) {
+            viewModelScope.launch { playlistRepository.deletePlaylist(playlistId) }
         }
 
         private fun <T> Flow<T>.shared(): StateFlow<T?> {
