@@ -32,12 +32,13 @@ import dagger.hilt.android.AndroidEntryPoint
 import io.github.aedev.flow.data.local.AppFontPreferences
 import io.github.aedev.flow.data.local.AppUiModePreferences
 import io.github.aedev.flow.data.local.LocalDataManager
+import io.github.aedev.flow.data.local.PlayerPreferences
 import io.github.aedev.flow.data.playlist.PlaylistImport
 import io.github.aedev.flow.data.playlist.PlaylistTransfer
 import io.github.aedev.flow.data.recommendation.FlowNeuroEngine
 import io.github.aedev.flow.data.repository.DeArrowRepository
 import io.github.aedev.flow.data.repository.OriginalTitleRepository
-import io.github.aedev.flow.data.translation.TextTranslator
+import io.github.aedev.flow.data.translation.GoogleTranslateClient
 import io.github.aedev.flow.discord.DiscordPresenceRuntime
 import io.github.aedev.flow.notification.NotificationHelper
 import io.github.aedev.flow.platform.AppIconController
@@ -54,7 +55,7 @@ import io.github.aedev.flow.player.PipQueueNavigation
 import io.github.aedev.flow.ui.FlowApp
 import io.github.aedev.flow.ui.IncomingLinks
 import io.github.aedev.flow.ui.components.library.message
-import io.github.aedev.flow.ui.components.shared.LocalTextTranslator
+import io.github.aedev.flow.ui.components.shared.LocalGoogleTranslateClient
 import io.github.aedev.flow.ui.components.shared.ProvideChannelGroupLabels
 import io.github.aedev.flow.ui.components.shared.ProvideDateDisplaySettings
 import io.github.aedev.flow.ui.components.shared.card.ProvideVideoCardState
@@ -92,10 +93,13 @@ class MainActivity : ComponentActivity() {
     lateinit var originalTitles: OriginalTitleRepository
 
     @Inject
-    lateinit var textTranslator: TextTranslator
+    lateinit var deArrow: DeArrowRepository
 
     @Inject
-    lateinit var deArrow: DeArrowRepository
+    lateinit var googleTranslateClient: GoogleTranslateClient
+
+    @Inject
+    lateinit var playerPreferences: PlayerPreferences
 
     @Inject
     lateinit var lifecyclePlaybackPreferences: LifecyclePlaybackPreferences
@@ -166,6 +170,7 @@ class MainActivity : ComponentActivity() {
         splashController.install(installSplashScreen())
 
         super.onCreate(savedInstanceState)
+        lifecycleScope.launch(Dispatchers.IO) { playerPreferences.clearLegacyTranslationSettings() }
         DiscordPresenceRuntime.attachActivity(this)
 
         window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
@@ -261,7 +266,7 @@ class MainActivity : ComponentActivity() {
                     .initialize(applicationContext)
             }
 
-            CompositionLocalProvider(LocalTextTranslator provides textTranslator) {
+            CompositionLocalProvider(LocalGoogleTranslateClient provides googleTranslateClient) {
                 FlowTheme(theme) {
                     val splashTone = splashTone(MaterialTheme.colorScheme.background)
                     LaunchedEffect(splashTone) { splashController.rememberTheme(splashTone, appIconController.activeSuffix()) }

@@ -12,7 +12,6 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,7 +27,6 @@ import io.github.aedev.flow.R
 import io.github.aedev.flow.data.model.Comment
 import io.github.aedev.flow.data.translation.Translation
 import io.github.aedev.flow.utils.ForeignLanguage
-import kotlinx.coroutines.launch
 
 /** A comment's translation while it shows in place of the comment's own text. */
 @Stable
@@ -49,7 +47,7 @@ internal fun CommentTranslationState.shown(original: CommentTextContent): Commen
 
 /**
  * "Translate" under a comment in another language, or under every comment where Android can't tell;
- * once translated in place, "Show original" and the server that translated it (#892).
+ * once translated in place, "Show original" and the translator label (#892).
  */
 @Composable
 internal fun CommentTranslateLink(
@@ -74,19 +72,16 @@ internal fun CommentTranslateLink(
         return
     }
     if (comment.text.isBlank() || !rememberIsForeign(comment)) return
-    val action = rememberTranslateAction()
-    val scope = rememberCoroutineScope()
+    val action =
+        rememberTranslateAction { translation ->
+            state.translation = translation
+            state.loading = false
+        }
     val label = stringResource(if (state.loading) R.string.translation_in_progress else R.string.translate)
     TranslateLinkText(label, color, modifier) {
         if (state.loading) return@TranslateLinkText
-        scope.launch {
-            state.loading = true
-            try {
-                state.translation = action.translate(comment.text)
-            } finally {
-                state.loading = false
-            }
-        }
+        state.loading = true
+        action.translate(comment.text)
     }
 }
 

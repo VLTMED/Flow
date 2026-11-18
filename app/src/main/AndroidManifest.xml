@@ -60,8 +60,6 @@
         <intent>
             <action android:name="android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL" />
         </intent>
-        <intent><action android:name="android.intent.action.PROCESS_TEXT" /><data android:mimeType="text/plain" /></intent>
-        <intent><action android:name="android.intent.action.TRANSLATE" /></intent>
     </queries>
 
     <application
@@ -664,4 +662,3 @@
     </application>
 
 </manifest>
-

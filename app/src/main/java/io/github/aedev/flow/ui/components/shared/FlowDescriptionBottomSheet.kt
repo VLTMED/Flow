@@ -51,7 +51,6 @@ import io.github.aedev.flow.utils.DateContext
 import io.github.aedev.flow.utils.formatLikeCount
 import io.github.aedev.flow.utils.formatViewCount
 import io.github.aedev.flow.utils.toAnnotatedString
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -100,10 +99,13 @@ fun FlowDescriptionBottomSheet(
                 ?: parseHtmlDescription(video.description, linkColor)
         }
     var descLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
-    val translateAction = rememberTranslateAction()
-    val scope = rememberCoroutineScope()
     var translated by remember(video.id) { mutableStateOf<TitledTranslation?>(null) }
     var translating by remember(video.id) { mutableStateOf(false) }
+    val translateAction =
+        rememberTranslateAction { result ->
+            translated = result?.splitTitle()
+            translating = false
+        }
     val shownDescription = translated?.body?.takeIf { it.isNotBlank() }?.let { AnnotatedString(it) } ?: descriptionText
 
     // The server marks its own hashtags; a description that only arrived as HTML is still scanned.
@@ -150,15 +152,8 @@ fun FlowDescriptionBottomSheet(
                         if (translated != null) {
                             translated = null
                         } else if (!translating) {
-                            scope.launch {
-                                translating = true
-                                try {
-                                    translated = translateAction.translate(titledText(video.title, descriptionText.text))?.splitTitle()
-                                } finally {
-                                    translating =
-                                        false
-                                }
-                            }
+                            translating = true
+                            translateAction.translate(titledText(video.title, descriptionText.text))
                         }
                     }) {
                         Icon(

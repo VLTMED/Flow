@@ -5,47 +5,65 @@ import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalContext
 import io.github.aedev.flow.R
-import io.github.aedev.flow.data.translation.TextTranslator
+import io.github.aedev.flow.data.translation.GoogleTranslateClient
 import io.github.aedev.flow.data.translation.Translation
-import io.github.aedev.flow.data.translation.TranslationResult
-import io.github.aedev.flow.utils.TranslateIntents
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 
-/** The activity's translator, installed by MainActivity; null in previews, where Translate hands text to an app. */
-val LocalTextTranslator = staticCompositionLocalOf<TextTranslator?> { null }
+internal val LocalGoogleTranslateClient =
+    staticCompositionLocalOf<GoogleTranslateClient?> { null }
 
-/** Translate on a comment or description: in place through the viewer's server, or handed to their translator app (#892). */
+/** Starts one direct Google Translate web request for an explicit user action. */
 @Stable
 class TranslateAction internal constructor(
     private val context: Context,
-    private val translator: TextTranslator?,
+    private val translator: GoogleTranslateClient?,
+    private val scope: CoroutineScope,
+    private val onResult: (Translation?) -> Unit,
 ) {
-    /** The translation to show in place, or null when the text went to an app or the server failed (already said). */
-    suspend fun translate(text: String): Translation? {
-        val result = translator?.translate(text) ?: TranslationResult.NoServer
-        return when (result) {
-            is TranslationResult.Done -> {
-                result.translation
-            }
-
-            TranslationResult.NoServer -> {
-                TranslateIntents.open(context, text)
-                null
-            }
-
-            is TranslationResult.Failed -> {
-                Toast.makeText(context, context.getString(R.string.translation_failed, result.host), Toast.LENGTH_LONG).show()
-                null
+    fun translate(text: String) {
+        if (text.isBlank()) {
+            onResult(null)
+            return
+        }
+        val activeTranslator = translator
+        if (activeTranslator == null) {
+            Toast.makeText(context, R.string.translation_failed, Toast.LENGTH_LONG).show()
+            onResult(null)
+            return
+        }
+        scope.launch {
+            try {
+                val translatedText = activeTranslator.translate(text)
+                onResult(Translation(translatedText, context.getString(R.string.google_translate)))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                Toast.makeText(context, R.string.translation_failed, Toast.LENGTH_LONG).show()
+                onResult(null)
             }
         }
     }
 }
 
 @Composable
-fun rememberTranslateAction(): TranslateAction {
+fun rememberTranslateAction(onResult: (Translation?) -> Unit): TranslateAction {
     val context = LocalContext.current
-    val translator = LocalTextTranslator.current
-    return remember(context, translator) { TranslateAction(context, translator) }
+    val translator = LocalGoogleTranslateClient.current
+    val scope = rememberCoroutineScope()
+    val latestOnResult = rememberUpdatedState(onResult)
+    return remember(context, translator, scope, latestOnResult) {
+        TranslateAction(
+            context = context,
+            translator = translator,
+            scope = scope,
+            onResult = { latestOnResult.value(it) },
+        )
+    }
 }

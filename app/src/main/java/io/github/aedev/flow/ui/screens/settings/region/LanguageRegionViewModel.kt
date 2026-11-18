@@ -5,13 +5,8 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.github.aedev.flow.data.local.CONTENT_LANGUAGE_FOLLOW_APP
 import io.github.aedev.flow.data.local.PlayerPreferences
-import io.github.aedev.flow.data.translation.TranslationSecretStore
-import io.github.aedev.flow.data.translation.TranslationServer
-import io.github.aedev.flow.data.translation.TranslationServerType
-import io.github.aedev.flow.data.translation.TranslationSettings
 import io.github.aedev.flow.ui.screens.settings.SettingsViewModel
 import io.github.aedev.flow.utils.AppLanguageManager
-import kotlinx.coroutines.flow.combine
 import org.schabi.newpipe.extractor.ServiceList
 import java.util.Locale
 import javax.inject.Inject
@@ -29,16 +24,12 @@ class LanguageRegionViewModel
     constructor(
         @ApplicationContext private val context: Context,
         private val preferences: PlayerPreferences,
-        private val translationSecretStore: TranslationSecretStore,
     ) : SettingsViewModel() {
         val appLanguage = preferences.appLanguage.asState(AppLanguageManager.SYSTEM_DEFAULT)
         val contentLanguage = preferences.contentLanguage.asState(CONTENT_LANGUAGE_FOLLOW_APP)
         val contentCountry = preferences.trendingRegion.asState(DEFAULT_COUNTRY)
         val originalTitles = preferences.originalTitles.asState(false)
-        val translation =
-            combine(preferences.translationSettings, translationSecretStore.apiKey) { settings, apiKey ->
-                settings.copy(apiKey = apiKey)
-            }.asState(TranslationSettings())
+        val translationTarget = preferences.translationTarget.asState("")
 
         /** The languages YouTube localizes content into, i.e. every value its `hl` accepts. */
         val contentLanguages: List<LanguageOption> by lazy {
@@ -70,25 +61,6 @@ class LanguageRegionViewModel
         fun setContentCountry(code: String) = write { preferences.setTrendingRegion(code) }
 
         fun setOriginalTitles(enabled: Boolean) = write { preferences.setOriginalTitles(enabled) }
-
-        fun setTranslateWithServer(useServer: Boolean) = write { preferences.setTranslationUseServer(useServer) }
-
-        /** Saves the server and switches Translate to it; addresses Flow won't send text to are refused. */
-        fun saveTranslationServer(
-            type: TranslationServerType,
-            url: String,
-            apiKey: String,
-            onResult: (Boolean) -> Unit,
-        ) {
-            val normalized = TranslationServer.normalizeUrl(url) ?: return onResult(false)
-            write {
-                if (type == TranslationServerType.LIBRETRANSLATE) {
-                    translationSecretStore.setApiKey(apiKey)
-                }
-                preferences.setTranslationServer(type, normalized)
-            }
-            onResult(true)
-        }
 
         fun setTranslationTarget(tag: String) = write { preferences.setTranslationTarget(tag) }
 
