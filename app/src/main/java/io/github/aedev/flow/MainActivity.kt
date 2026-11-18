@@ -37,6 +37,7 @@ import io.github.aedev.flow.data.playlist.PlaylistTransfer
 import io.github.aedev.flow.data.recommendation.FlowNeuroEngine
 import io.github.aedev.flow.data.repository.DeArrowRepository
 import io.github.aedev.flow.data.repository.OriginalTitleRepository
+import io.github.aedev.flow.data.translation.TextTranslator
 import io.github.aedev.flow.discord.DiscordPresenceRuntime
 import io.github.aedev.flow.notification.NotificationHelper
 import io.github.aedev.flow.platform.AppIconController
@@ -53,6 +54,7 @@ import io.github.aedev.flow.player.PipQueueNavigation
 import io.github.aedev.flow.ui.FlowApp
 import io.github.aedev.flow.ui.IncomingLinks
 import io.github.aedev.flow.ui.components.library.message
+import io.github.aedev.flow.ui.components.shared.LocalTextTranslator
 import io.github.aedev.flow.ui.components.shared.ProvideChannelGroupLabels
 import io.github.aedev.flow.ui.components.shared.ProvideDateDisplaySettings
 import io.github.aedev.flow.ui.components.shared.card.ProvideVideoCardState
@@ -88,6 +90,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var originalTitles: OriginalTitleRepository
+
+    @Inject
+    lateinit var textTranslator: TextTranslator
 
     @Inject
     lateinit var deArrow: DeArrowRepository
@@ -256,56 +261,58 @@ class MainActivity : ComponentActivity() {
                     .initialize(applicationContext)
             }
 
-            FlowTheme(theme) {
-                val splashTone = splashTone(MaterialTheme.colorScheme.background)
-                LaunchedEffect(splashTone) { splashController.rememberTheme(splashTone, appIconController.activeSuffix()) }
+            CompositionLocalProvider(LocalTextTranslator provides textTranslator) {
+                FlowTheme(theme) {
+                    val splashTone = splashTone(MaterialTheme.colorScheme.background)
+                    LaunchedEffect(splashTone) { splashController.rememberTheme(splashTone, appIconController.activeSuffix()) }
 
-                // Date preferences: five DataStore flows used to be opened per video card,
-                // metadata line, info section, description sheet and info dialog.
-                ProvideWindowSizeClass {
-                    ProvideDateDisplaySettings {
-                        // Card preferences and watch progress are collected once here. Cards used to
-                        // collect them individually, so a feed of ten opened ten Room observers and
-                        // fifty DataStore collectors.
-                        ProvideVideoCardState(originalTitles, deArrow) {
-                            Box(
-                                modifier =
-                                    Modifier
-                                        .fillMaxSize()
-                                        .semantics { testTagsAsResourceId = true },
-                            ) {
-                                // 1. MAIN APP (Home/NavHost)
-                                // This loads *behind* the splash screen immediately.
-                                // By the time splash fades, this is ready.
-                                val deeplinkVideoId by links.videoId
-                                val isDeeplinkShort by links.isShort
-                                val isDeeplinkShared by links.isShared
-                                val openMusicPlayerRequest by links.musicPlayerRequest
-                                val pendingRoute by links.route
+                    // Date preferences: five DataStore flows used to be opened per video card,
+                    // metadata line, info section, description sheet and info dialog.
+                    ProvideWindowSizeClass {
+                        ProvideDateDisplaySettings {
+                            // Card preferences and watch progress are collected once here. Cards used to
+                            // collect them individually, so a feed of ten opened ten Room observers and
+                            // fifty DataStore collectors.
+                            ProvideVideoCardState(originalTitles, deArrow) {
+                                Box(
+                                    modifier =
+                                        Modifier
+                                            .fillMaxSize()
+                                            .semantics { testTagsAsResourceId = true },
+                                ) {
+                                    // 1. MAIN APP (Home/NavHost)
+                                    // This loads *behind* the splash screen immediately.
+                                    // By the time splash fades, this is ready.
+                                    val deeplinkVideoId by links.videoId
+                                    val isDeeplinkShort by links.isShort
+                                    val isDeeplinkShared by links.isShared
+                                    val openMusicPlayerRequest by links.musicPlayerRequest
+                                    val pendingRoute by links.route
 
-                                ProvideChannelGroupLabels {
-                                    if (appUiRoot == AppUiRoot.TV) {
-                                        SideEffect { splashController.contentReady = true }
-                                        FlowTvApp(
-                                            deeplinkVideoId = deeplinkVideoId,
-                                            isShort = isDeeplinkShort,
-                                            onDeeplinkConsumed = links::consumeVideo,
-                                        )
-                                    } else {
-                                        FlowApp(
-                                            currentTheme = theme.themeMode,
-                                            themeVariant = theme.themeVariant,
-                                            systemLightThemeMode = theme.systemLightThemeMode,
-                                            systemDarkThemeMode = theme.systemDarkThemeMode,
-                                            deeplinkVideoId = deeplinkVideoId,
-                                            isShort = isDeeplinkShort,
-                                            isSharedLink = isDeeplinkShared,
-                                            openMusicPlayerRequest = openMusicPlayerRequest,
-                                            onDeeplinkConsumed = links::consumeVideo,
-                                            pendingRoute = pendingRoute,
-                                            onPendingRouteConsumed = links::consumeRoute,
-                                            onStartDestinationKnown = { splashController.contentReady = true },
-                                        )
+                                    ProvideChannelGroupLabels {
+                                        if (appUiRoot == AppUiRoot.TV) {
+                                            SideEffect { splashController.contentReady = true }
+                                            FlowTvApp(
+                                                deeplinkVideoId = deeplinkVideoId,
+                                                isShort = isDeeplinkShort,
+                                                onDeeplinkConsumed = links::consumeVideo,
+                                            )
+                                        } else {
+                                            FlowApp(
+                                                currentTheme = theme.themeMode,
+                                                themeVariant = theme.themeVariant,
+                                                systemLightThemeMode = theme.systemLightThemeMode,
+                                                systemDarkThemeMode = theme.systemDarkThemeMode,
+                                                deeplinkVideoId = deeplinkVideoId,
+                                                isShort = isDeeplinkShort,
+                                                isSharedLink = isDeeplinkShared,
+                                                openMusicPlayerRequest = openMusicPlayerRequest,
+                                                onDeeplinkConsumed = links::consumeVideo,
+                                                pendingRoute = pendingRoute,
+                                                onPendingRouteConsumed = links::consumeRoute,
+                                                onStartDestinationKnown = { splashController.contentReady = true },
+                                            )
+                                        }
                                     }
                                 }
                             }

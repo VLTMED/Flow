@@ -54,8 +54,11 @@ import io.github.aedev.flow.player.media.MediaLoader
 import io.github.aedev.flow.player.preload.GaplessPreloadController
 import io.github.aedev.flow.player.preload.PreloadTarget
 import io.github.aedev.flow.player.quality.AdaptiveLadder
+import io.github.aedev.flow.player.quality.AudioQualityOption
+import io.github.aedev.flow.player.quality.AudioQualityState
 import io.github.aedev.flow.player.quality.LiveQualityPick
 import io.github.aedev.flow.player.quality.LiveQualitySelection
+import io.github.aedev.flow.player.quality.Media3AudioQuality
 import io.github.aedev.flow.player.quality.QualityManager
 import io.github.aedev.flow.player.recovery.ClearedMediaRecoveryState
 import io.github.aedev.flow.player.recovery.StreamDenialReloader
@@ -148,6 +151,8 @@ class EnhancedPlayerManager private constructor() {
     // State management
     private val _playerState = MutableStateFlow(EnhancedPlayerState())
     val playerState: StateFlow<EnhancedPlayerState> = _playerState.asStateFlow()
+    private val _audioQualityState = MutableStateFlow(AudioQualityState())
+    val audioQualityState: StateFlow<AudioQualityState> = _audioQualityState.asStateFlow()
     val hasQueue: Flow<Boolean> = playerState.queuePresence()
 
     // Stream data
@@ -156,6 +161,9 @@ class EnhancedPlayerManager private constructor() {
     private var availableAudioStreams: List<AudioStream> = emptyList()
     private var allAudioStreams: List<AudioStream> = emptyList()
     private var availableAudioQualityStreams: List<AudioStream> = emptyList()
+    private var audioQualityOverrideActive = false
+    private var selectedAudioQualityFormat: PlayerResponse.StreamingData.Format? = null
+    private var audioQualityRequestedKey: String? = null
     private val subtitleTracks = SubtitleTracks()
     private val subtitleDelay = SubtitleDelay()
     private var subtitleDelayVideoId: String? = null
@@ -1020,6 +1028,7 @@ class EnhancedPlayerManager private constructor() {
                 override fun onTracksChanged(tracks: Tracks) {
                     if (subtitleTracks.onTracksChanged(tracks)) publishSubtitles()
                     applySubtitleTrackSelection()
+                    refreshAudioQualityState(tracks)
                     if (currentIsLiveStream) updateLiveQualityOptions(tracks)
                 }
             },
@@ -1218,6 +1227,31 @@ class EnhancedPlayerManager private constructor() {
             qualityManager?.setCurrentStream(currentVideoStream)
         }
         currentAudioStream = audioStream
+        if (localFilePath == null && !isLiveStream) {
+            val refreshedAudioCatalog =
+                Media3AudioQuality.fromSources(
+                    streams = allAudioStreams,
+                    innerTubeFormats = innerTubeAudioFormats,
+                    current = audioStream,
+                    includeUrlLessFormats = currentSabrInfo != null,
+                )
+            val storedAudioPreference =
+                appContext?.let { context ->
+                    withContext(Dispatchers.IO) {
+                        PlayerPreferences(context).manualAudioRepresentation.first()
+                    }
+                }
+            val restoredAudioOption =
+                storedAudioPreference?.let { preference ->
+                    Media3AudioQuality.findPreference(refreshedAudioCatalog, preference)
+                }
+            if (restoredAudioOption != null) {
+                currentAudioStream = restoredAudioOption.sourceStream ?: audioStream
+                selectedAudioQualityFormat = sourceFormatFor(restoredAudioOption)
+                audioQualityOverrideActive = true
+                audioQualityRequestedKey = restoredAudioOption.key
+            }
+        }
         availableAudioQualityStreams = StreamProcessor.processAudioQualityStreams(allAudioStreams, currentAudioStream)
 
         val isAutoMode = (videoStream == null)
@@ -1295,6 +1329,10 @@ class EnhancedPlayerManager private constructor() {
         innerTubeAudioFormats = emptyList()
         currentVideoStream = null
         currentAudioStream = null
+        audioQualityOverrideActive = false
+        selectedAudioQualityFormat = null
+        audioQualityRequestedKey = null
+        _audioQualityState.value = AudioQualityState()
         allAudioStreams = emptyList()
         availableAudioStreams = emptyList()
         availableAudioQualityStreams = emptyList()
@@ -1494,6 +1532,8 @@ class EnhancedPlayerManager private constructor() {
                 mediaId = sessionMetadata?.mediaId.orEmpty(),
                 mediaMetadata = sessionMetadata?.toMedia3Metadata() ?: MediaMetadata.EMPTY,
                 adaptiveLadder = ladder,
+                selectedAudioFormat = selectedAudioQualityFormat,
+                audioQualityOverride = audioQualityOverrideActive,
             ) ?: false
         qualityManager?.isAdaptiveLadderActive = result && mediaLoader?.lastSourceWasAdaptiveLadder == true
         if (result) {
@@ -2884,6 +2924,9 @@ class EnhancedPlayerManager private constructor() {
 
     fun switchAudioTrack(index: Int) {
         if (index in availableAudioStreams.indices) {
+            audioQualityOverrideActive = false
+            selectedAudioQualityFormat = null
+            audioQualityRequestedKey = null
             currentAudioStream = availableAudioStreams[index]
             availableAudioQualityStreams = StreamProcessor.processAudioQualityStreams(allAudioStreams, currentAudioStream)
             val position = player?.currentPosition ?: 0L
@@ -2905,20 +2948,179 @@ class EnhancedPlayerManager private constructor() {
     }
 
     fun switchAudioQuality(index: Int) {
-        val selectedStream = availableAudioQualityStreams.getOrNull(index) ?: return
-        if (selectedStream.getContent() == currentAudioStream?.getContent()) return
-
-        currentAudioStream = selectedStream
-        val position = player?.currentPosition ?: 0L
-        val wasPlaying = player?.isPlaying ?: false
-        if (audioOnlyMode.isActive) {
-            loadMediaInternal(null, currentAudioStream, audioOnly = true)
-        } else {
-            loadMediaInternal(currentVideoStream, currentAudioStream)
+        if (index < 0) {
+            selectAudioQualityAuto()
+            return
         }
-        player?.seekTo(position)
-        if (wasPlaying) player?.play()
-        _playerState.value = _playerState.value.copy(currentAudioQuality = index)
+        val catalog = _audioQualityState.value.takeUnless { it.isUnavailable } ?: currentAudioQualityCatalog()
+        val option =
+            catalog.options.getOrNull(index) ?: availableAudioQualityStreams.getOrNull(index)?.let { stream ->
+                Media3AudioQuality.fromSources(listOf(stream), emptyList(), currentAudioStream).options.firstOrNull()
+            } ?: return
+        selectAudioQuality(option)
+    }
+
+    fun selectAudioQuality(option: AudioQualityOption): Boolean {
+        val catalog = currentAudioQualityCatalog()
+        val selected =
+            catalog.options.firstOrNull { it.key == option.key }
+                ?: _audioQualityState.value.options.firstOrNull { it.key == option.key }
+                ?: return false
+        val currentPlayer = player ?: return false
+        val previousParameters = currentPlayer.trackSelectionParameters
+        val previousState = _audioQualityState.value
+        val previousStream = currentAudioStream
+        val previousFormat = selectedAudioQualityFormat
+        val previousOverride = audioQualityOverrideActive
+        val previousKey = audioQualityRequestedKey
+        if (selected.sourceStream == null && selected.sourceFormat == null) {
+            if (selected.trackGroup == null) return false
+            currentPlayer.trackSelectionParameters = Media3AudioQuality.select(previousParameters, selected)
+            audioQualityOverrideActive = true
+            selectedAudioQualityFormat = null
+            audioQualityRequestedKey = selected.key
+            refreshAudioQualityState(currentPlayer.currentTracks)
+            _audioQualityState.value = _audioQualityState.value.copy(selectedKey = selected.key, currentKey = selected.key, isAuto = false)
+            persistManualAudioPreference(selected)
+            return true
+        }
+        val position = currentPlayer.currentPosition
+        val playing = currentPlayer.playWhenReady
+        currentAudioStream = selected.sourceStream ?: currentAudioStream
+        selectedAudioQualityFormat = sourceFormatFor(selected)
+        audioQualityOverrideActive = true
+        audioQualityRequestedKey = selected.key
+        val loaded =
+            loadMediaInternal(
+                currentVideoStream,
+                currentAudioStream,
+                preservePosition = position,
+                audioOnly = audioOnlyMode.isActive,
+                playWhenReady = playing,
+            )
+        if (!loaded) {
+            currentAudioStream = previousStream
+            selectedAudioQualityFormat = previousFormat
+            audioQualityOverrideActive = previousOverride
+            audioQualityRequestedKey = previousKey
+            currentPlayer.trackSelectionParameters = previousParameters
+            _audioQualityState.value = previousState
+            return false
+        }
+        refreshAudioQualityState(currentPlayer.currentTracks)
+        _audioQualityState.value = _audioQualityState.value.copy(selectedKey = selected.key, currentKey = selected.key, isAuto = false)
+        persistManualAudioPreference(selected)
+        return true
+    }
+
+    fun selectAudioQualityAuto(): Boolean {
+        val currentPlayer = player ?: return false
+        val position = currentPlayer.currentPosition
+        val playing = currentPlayer.playWhenReady
+        val previousParameters = currentPlayer.trackSelectionParameters
+        val previousState = _audioQualityState.value
+        val previousStream = currentAudioStream
+        val previousActive = audioQualityOverrideActive
+        val previousFormat = selectedAudioQualityFormat
+        val previousKey = audioQualityRequestedKey
+        currentAudioStream = StreamProcessor.bestAudioStreamForTrack(allAudioStreams, previousStream)
+        audioQualityOverrideActive = false
+        selectedAudioQualityFormat = null
+        audioQualityRequestedKey = null
+        currentPlayer.trackSelectionParameters = Media3AudioQuality.selectAuto(previousParameters)
+        val loaded =
+            loadMediaInternal(
+                currentVideoStream,
+                currentAudioStream,
+                preservePosition = position,
+                audioOnly = audioOnlyMode.isActive,
+                playWhenReady = playing,
+            )
+        if (!loaded) {
+            currentAudioStream = previousStream
+            audioQualityOverrideActive = previousActive
+            selectedAudioQualityFormat = previousFormat
+            audioQualityRequestedKey = previousKey
+            currentPlayer.trackSelectionParameters = previousParameters
+            _audioQualityState.value = previousState
+            return false
+        }
+        refreshAudioQualityState(currentPlayer.currentTracks)
+        clearManualAudioPreference()
+        return true
+    }
+
+    private fun currentAudioQualityCatalog(tracks: Tracks = player?.currentTracks ?: Tracks.EMPTY): AudioQualityState {
+        val currentPlayer = player ?: return AudioQualityState()
+        if (currentLocalFilePath == null && !currentIsLiveStream) {
+            val source =
+                Media3AudioQuality.fromSources(
+                    streams = allAudioStreams,
+                    innerTubeFormats = innerTubeAudioFormats,
+                    current = currentAudioStream,
+                    selectedKey = audioQualityRequestedKey,
+                    auto = !audioQualityOverrideActive,
+                    includeUrlLessFormats = currentSabrInfo != null,
+                )
+            if (!source.isUnavailable) return source
+        }
+        val manifest = Media3AudioQuality.state(tracks, currentPlayer.trackSelectionParameters)
+        return if (audioQualityRequestedKey != null && manifest.options.any { it.key == audioQualityRequestedKey }) {
+            manifest.copy(
+                isAuto = !audioQualityOverrideActive,
+                selectedKey = audioQualityRequestedKey.takeIf { audioQualityOverrideActive },
+            )
+        } else {
+            manifest
+        }
+    }
+
+    private fun sourceFormatFor(option: AudioQualityOption): PlayerResponse.StreamingData.Format? =
+        option.sourceFormat ?: innerTubeAudioFormats.firstOrNull { format ->
+            format.itag == option.itag && (
+                format.audioTrack?.id == option.sourceStream?.audioTrackId ||
+                    (
+                        format.audioTrack?.id.isNullOrBlank() &&
+                            option.sourceStream?.audioTrackType == org.schabi.newpipe.extractor.stream.AudioTrackType.ORIGINAL
+                    )
+            )
+        }
+
+    private fun refreshAudioQualityState(tracks: Tracks) {
+        if (player == null) return
+        val state = currentAudioQualityCatalog(tracks)
+        _audioQualityState.value = state
+        val options =
+            state.options.mapIndexed { index, option ->
+                AudioTrackOption(
+                    index = index,
+                    label = option.label,
+                    language = option.language,
+                    bitrate = option.bitrate.toLong(),
+                    codecKey = option.codecs.orEmpty(),
+                )
+            }
+        _playerState.value =
+            _playerState.value.copy(
+                availableAudioQualities = options,
+                currentAudioQuality = state.selectedOptionIndex(),
+            )
+    }
+
+    private fun persistManualAudioPreference(option: AudioQualityOption) {
+        appContext?.let { context ->
+            scope.launch(Dispatchers.IO) {
+                PlayerPreferences(context).setManualAudioRepresentation(Media3AudioQuality.preferenceFor(option))
+            }
+        }
+    }
+
+    private fun clearManualAudioPreference() {
+        appContext?.let { context ->
+            scope.launch(Dispatchers.IO) {
+                PlayerPreferences(context).clearManualAudioRepresentation()
+            }
+        }
     }
 
     /** Shows the track whose option has [url], or turns captions off for null. */

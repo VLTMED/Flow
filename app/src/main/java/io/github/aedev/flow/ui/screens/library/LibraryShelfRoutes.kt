@@ -31,6 +31,8 @@ import io.github.aedev.flow.ui.components.library.LibraryShelfPlaceholder
 import io.github.aedev.flow.ui.components.library.LibraryShortsShelf
 import io.github.aedev.flow.ui.components.library.LibraryVideoCard
 import io.github.aedev.flow.ui.components.library.PlaylistActionsMenu
+import io.github.aedev.flow.ui.components.music.sheet.LocalMusicMenus
+import io.github.aedev.flow.ui.components.music.sheet.MusicCollectionActionItem
 import kotlinx.coroutines.flow.StateFlow
 
 @Composable
@@ -89,13 +91,17 @@ internal fun LibraryPlaylistsShelf(
     section: LibrarySection,
     videoPlaylistsFlow: StateFlow<List<PlaylistInfo>?>?,
     musicPlaylistsFlow: StateFlow<List<PlaylistInfo>?>?,
+    ownedMusicPlaylistIdsFlow: StateFlow<Set<String>?>,
     onTitleClick: () -> Unit,
     onVideoPlaylistClick: (String) -> Unit,
     onMusicPlaylistClick: (String) -> Unit,
     onDeletePlaylist: ((PlaylistInfo) -> Unit)? = null,
+    onRenameMusicPlaylist: ((PlaylistInfo) -> Unit)? = null,
 ) {
+    val musicMenus = LocalMusicMenus.current
     val videoPlaylists = videoPlaylistsFlow?.collectAsStateWithLifecycle()?.value
     val musicPlaylists = musicPlaylistsFlow?.collectAsStateWithLifecycle()?.value
+    val ownedMusicPlaylistIds by ownedMusicPlaylistIdsFlow.collectAsStateWithLifecycle()
     val title = section.title
 
     if (videoPlaylists == null && musicPlaylists == null) {
@@ -140,6 +146,7 @@ internal fun LibraryPlaylistsShelf(
             contentType = { "music-playlist" },
         ) { playlist ->
             val artworkSize = cardWidth * 9f / 16f
+            val isOwnedPlaylist = playlist.id in ownedMusicPlaylistIds.orEmpty()
             var showActions by remember(playlist.id) { mutableStateOf(false) }
             Box(modifier = Modifier.width(artworkSize)) {
                 LibraryAlbumCard(
@@ -148,17 +155,35 @@ internal fun LibraryPlaylistsShelf(
                     thumbnailUrl = playlist.thumbnailUrl,
                     onClick = { onMusicPlaylistClick(playlist.id) },
                     artworkSize = artworkSize,
-                    onLongClick = { showActions = true },
+                    onLongClick =
+                        if (ownedMusicPlaylistIds == null) {
+                            null
+                        } else if (isOwnedPlaylist) {
+                            { showActions = true }
+                        } else {
+                            {
+                                musicMenus.openCollection(
+                                    MusicCollectionActionItem(
+                                        id = playlist.id,
+                                        title = playlist.name,
+                                        subtitle = playlist.description,
+                                        thumbnailUrl = playlist.thumbnailUrl,
+                                    ),
+                                )
+                            }
+                        },
                 )
-                PlaylistActionsMenu(
-                    expanded = showActions,
-                    onDismiss = { showActions = false },
-                    onDownload = null,
-                    onRename = null,
-                    onDelete = onDeletePlaylist?.let { delete -> { delete(playlist) } },
-                    onOpen = { onMusicPlaylistClick(playlist.id) },
-                    modifier = Modifier.align(Alignment.TopEnd),
-                )
+                if (isOwnedPlaylist) {
+                    PlaylistActionsMenu(
+                        expanded = showActions,
+                        onDismiss = { showActions = false },
+                        onDownload = null,
+                        onRename = onRenameMusicPlaylist?.let { rename -> { rename(playlist) } },
+                        onDelete = onDeletePlaylist?.let { delete -> { delete(playlist) } },
+                        onOpen = { onMusicPlaylistClick(playlist.id) },
+                        modifier = Modifier.align(Alignment.TopEnd),
+                    )
+                }
             }
         }
     }

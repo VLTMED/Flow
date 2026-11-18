@@ -111,6 +111,13 @@ class LibraryViewModel
             viewModelScope.launch { playlistRepository.deletePlaylist(playlistId) }
         }
 
+        internal fun renamePlaylist(
+            playlistId: String,
+            name: String,
+        ) {
+            viewModelScope.launch { playlistRepository.updatePlaylistName(playlistId, name) }
+        }
+
         private fun <T> Flow<T>.shared(): StateFlow<T?> {
             val upstream: Flow<T?> = this
             return upstream
@@ -126,6 +133,11 @@ class LibraryViewModel
                 .shared()
         private val allMusicPlaylists =
             combine(playlistRepository.getMusicPlaylistsFlow(), playlistOrder) { playlists, order -> playlists.sortedFor(order) }
+                .shared()
+        internal val ownedMusicPlaylistIds =
+            playlistRepository
+                .getUserCreatedMusicPlaylistsFlow()
+                .map { playlists -> playlists.mapTo(HashSet()) { it.id } }
                 .shared()
         private val allWatchLater = playlistRepository.getVideoOnlyWatchLaterFlow().shared()
         private val allSavedShorts = playlistRepository.getVideoOnlySavedShortsFlow().shared()

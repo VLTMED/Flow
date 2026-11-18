@@ -13,6 +13,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.GTranslate
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -22,6 +23,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -31,6 +33,9 @@ import io.github.aedev.flow.R
 import io.github.aedev.flow.data.model.RichTextTarget
 import io.github.aedev.flow.data.model.Video
 import io.github.aedev.flow.data.model.plainRichText
+import io.github.aedev.flow.data.translation.TitledTranslation
+import io.github.aedev.flow.data.translation.splitTitle
+import io.github.aedev.flow.data.translation.titledText
 import io.github.aedev.flow.innertube.pages.VideoDescriptionFactoid
 import io.github.aedev.flow.innertube.pages.VideoDescriptionPage
 import io.github.aedev.flow.ui.components.layout.navigation.LocalMediaNavigator
@@ -46,6 +51,7 @@ import io.github.aedev.flow.utils.DateContext
 import io.github.aedev.flow.utils.formatLikeCount
 import io.github.aedev.flow.utils.formatViewCount
 import io.github.aedev.flow.utils.toAnnotatedString
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -94,6 +100,11 @@ fun FlowDescriptionBottomSheet(
                 ?: parseHtmlDescription(video.description, linkColor)
         }
     var descLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+    val translateAction = rememberTranslateAction()
+    val scope = rememberCoroutineScope()
+    var translated by remember(video.id) { mutableStateOf<TitledTranslation?>(null) }
+    var translating by remember(video.id) { mutableStateOf(false) }
+    val shownDescription = translated?.body?.takeIf { it.isNotBlank() }?.let { AnnotatedString(it) } ?: descriptionText
 
     // The server marks its own hashtags; a description that only arrived as HTML is still scanned.
     val hashtags =
@@ -135,6 +146,35 @@ fun FlowDescriptionBottomSheet(
                         fontWeight = FontWeight.Bold,
                     ),
                 actions = {
+                    IconButton(onClick = {
+                        if (translated != null) {
+                            translated = null
+                        } else if (!translating) {
+                            scope.launch {
+                                translating = true
+                                try {
+                                    translated = translateAction.translate(titledText(video.title, descriptionText.text))?.splitTitle()
+                                } finally {
+                                    translating =
+                                        false
+                                }
+                            }
+                        }
+                    }) {
+                        Icon(
+                            Icons.Outlined.GTranslate,
+                            contentDescription =
+                                stringResource(
+                                    if (translated !=
+                                        null
+                                    ) {
+                                        R.string.translation_show_original
+                                    } else {
+                                        R.string.translate_description
+                                    },
+                                ),
+                        )
+                    }
                     IconButton(
                         onClick = {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -166,7 +206,7 @@ fun FlowDescriptionBottomSheet(
         ) {
             SelectionContainer {
                 Text(
-                    text = video.title,
+                    text = translated?.title?.takeIf { it.isNotBlank() } ?: video.title,
                     style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp),
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -208,12 +248,12 @@ fun FlowDescriptionBottomSheet(
             }
 
             DescriptionBody(
-                text = descriptionText,
+                text = shownDescription,
                 inlineContent = descriptionEmoji,
                 tint = tint,
                 onLayout = { descLayoutResult = it },
                 onTap = { offset ->
-                    descriptionText.handleDescriptionTap(
+                    shownDescription.handleDescriptionTap(
                         offset = offset,
                         onSeekMs = onSeekMs,
                         onHashtagClick = onHashtagClick,

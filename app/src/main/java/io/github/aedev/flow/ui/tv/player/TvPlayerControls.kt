@@ -94,6 +94,7 @@ internal class TvPlayerUtilityActions(
 internal fun BoxScope.TvPlayerControls(
     visible: Boolean,
     edgeScrimDisabled: Boolean,
+    hideCenterTransportControls: Boolean,
     video: Video,
     isPlaying: Boolean,
     isBuffering: Boolean,
@@ -183,15 +184,17 @@ internal fun BoxScope.TvPlayerControls(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                MediaPlaybackControls(
-                    isPlaying = isPlaying,
-                    isBuffering = isBuffering,
-                    onPreviousClick = playActions.onPrevious,
-                    onPlayPauseToggle = playActions.onPlayPause,
-                    onNextClick = playActions.onNext,
-                    playPauseFocusRequester = playPauseFocusRequester,
-                    modifier = Modifier.width(TransportWidth),
-                )
+                if (!hideCenterTransportControls) {
+                    MediaPlaybackControls(
+                        isPlaying = isPlaying,
+                        isBuffering = isBuffering,
+                        onPreviousClick = playActions.onPrevious,
+                        onPlayPauseToggle = playActions.onPlayPause,
+                        onNextClick = playActions.onNext,
+                        playPauseFocusRequester = playPauseFocusRequester,
+                        modifier = Modifier.width(TransportWidth),
+                    )
+                }
                 Spacer(Modifier.weight(1f))
                 TvPlayerUtilities(
                     isLive = isLive,

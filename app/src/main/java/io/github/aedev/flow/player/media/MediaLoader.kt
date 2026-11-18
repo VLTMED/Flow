@@ -30,6 +30,7 @@ import io.github.aedev.flow.player.sabr.integration.SabrMediaSourceFactory
 import io.github.aedev.flow.player.sabr.integration.SabrMediaSourceResult
 import io.github.aedev.flow.player.sabr.integration.SabrOrchestrator
 import io.github.aedev.flow.player.sabr.integration.SabrStreamInfo
+import io.github.aedev.flow.player.sabr.integration.withAudioQuality
 import io.github.aedev.flow.player.state.EnhancedPlayerState
 import io.github.aedev.flow.player.stream.ResolvedCaption
 import io.github.aedev.flow.player.stream.StreamProcessor
@@ -134,6 +135,8 @@ class MediaLoader(
         mediaId: String = "",
         mediaMetadata: MediaMetadata = MediaMetadata.EMPTY,
         adaptiveLadder: List<VideoStream> = emptyList(),
+        selectedAudioFormat: io.github.aedev.flow.innertube.models.response.PlayerResponse.StreamingData.Format? = null,
+        audioQualityOverride: Boolean = false,
     ): Boolean {
         val finalDuration =
             when {
@@ -194,6 +197,8 @@ class MediaLoader(
                         mediaId = mediaId,
                         mediaMetadata = mediaMetadata,
                         adaptiveLadder = adaptiveLadder,
+                        selectedAudioFormat = selectedAudioFormat,
+                        audioQualityOverride = audioQualityOverride,
                         onAdaptiveLadder = { lastSourceWasAdaptiveLadder = it },
                     )
 
@@ -306,6 +311,8 @@ class MediaLoader(
         mediaId: String = "",
         mediaMetadata: MediaMetadata = MediaMetadata.EMPTY,
         adaptiveLadder: List<VideoStream> = emptyList(),
+        selectedAudioFormat: io.github.aedev.flow.innertube.models.response.PlayerResponse.StreamingData.Format? = null,
+        audioQualityOverride: Boolean = false,
         onAdaptiveLadder: (Boolean) -> Unit = {},
     ): MediaSource? {
         cacheManager?.registerStreams(
@@ -320,9 +327,16 @@ class MediaLoader(
             sabrInfo != null && sabrInfo.streamingUrl.isNotEmpty() &&
                 sabrVideoId != null && sabrInfo.audioItag > 0 && sabrInfo.videoItag > 0
 
+        val explicitFormatMatchesCatalog =
+            selectedAudioFormat?.let { selected ->
+                innerTubeAudioFormats.any { candidate ->
+                    candidate.itag == selected.itag && candidate.audioTrack?.id.orEmpty() == selected.audioTrack?.id.orEmpty()
+                }
+            } != false
+        val canUseExplicitSabr = !audioQualityOverride || (selectedAudioFormat?.isAudio == true && explicitFormatMatchesCatalog)
+        val forceExplicitSabr = audioQualityOverride && selectedAudioFormat?.isAudio == true && selectedAudioFormat.url.isNullOrBlank()
         val overridesDefaultAudio = StreamProcessor.overridesDefaultAudioTrack(audioStream)
-
-        if (sabrAvailable && sabrPreferred && !overridesDefaultAudio) {
+        if (sabrAvailable && canUseExplicitSabr && (forceExplicitSabr || (sabrPreferred && !overridesDefaultAudio))) {
             createSabrMediaSource(
                 sabrInfo!!,
                 sabrVideoId!!,
@@ -330,6 +344,7 @@ class MediaLoader(
                 startPositionMs,
                 mediaId,
                 mediaMetadata,
+                selectedAudioFormat = selectedAudioFormat.takeIf { audioQualityOverride },
             )?.let { return mergeSubtitleSourcesIfNeeded(it, captions, dataSourceFactory, context) }
         }
 
@@ -397,8 +412,8 @@ class MediaLoader(
                     .resolve(
                         selectedStreams,
                         audioStream,
-                        dashManifestUrl = if (audioOnly) null else dashManifestUrl,
-                        hlsUrl = if (audioOnly) null else hlsUrl,
+                        dashManifestUrl = if (audioOnly || audioQualityOverride) null else dashManifestUrl,
+                        hlsUrl = if (audioOnly || audioQualityOverride) null else hlsUrl,
                         durationSeconds = finalDuration,
                         isLiveStream = isLiveStream && !audioOnly,
                         asAdaptiveLadder = useLadder,
@@ -414,6 +429,7 @@ class MediaLoader(
                 startPositionMs,
                 mediaId,
                 mediaMetadata,
+                selectedAudioFormat = selectedAudioFormat.takeIf { audioQualityOverride },
             )?.let { return mergeSubtitleSourcesIfNeeded(it, captions, dataSourceFactory, context) }
         }
 
@@ -437,19 +453,21 @@ class MediaLoader(
         startPositionMs: Long,
         mediaId: String,
         mediaMetadata: MediaMetadata,
+        selectedAudioFormat: io.github.aedev.flow.innertube.models.response.PlayerResponse.StreamingData.Format? = null,
     ): MediaSource? =
         try {
             releaseSabr()
             val durationMs = info.durationMs.takeIf { it > 0 } ?: (finalDuration * 1000L)
             val result =
                 SabrMediaSourceFactory.create(
-                    info = info,
+                    info = info.withAudioQuality(selectedAudioFormat),
                     videoId = videoId,
                     durationMs = durationMs,
                     startPositionMs = startPositionMs,
                     mediaId = mediaId,
                     mediaMetadata = mediaMetadata,
                     segmentCache = cacheManager?.getSabrSessionSegmentCache(),
+                    selectedAudioFormat = selectedAudioFormat,
                 )
             activeSabrOrchestrator = result.orchestrator
             result.orchestrator.onError = { _, msg, recoverable ->

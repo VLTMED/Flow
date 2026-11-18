@@ -61,6 +61,8 @@ object SabrUrlResolver {
         preferredCodec: String? = null,
         injectedPoToken: String? = null,
         injectedVisitorData: String? = null,
+        preferredAudioItag: Int? = null,
+        preferredAudioTrackId: String? = null,
     ): SabrStreamInfo? {
         val streamingData = playerResponse.streamingData ?: return null
         val sabrUrl = streamingData.serverAbrStreamingUrl
@@ -89,7 +91,7 @@ object SabrUrlResolver {
         val videoFormats = adaptiveFormats.filter { !it.isAudio }
 
         val selectedVideo = selectBestVideo(videoFormats, preferredCodec)
-        val selectedAudio = selectedVideo?.let { selectBestAudio(audioFormats, it) }
+        val selectedAudio = selectedVideo?.let { selectPreferredAudio(audioFormats, it, preferredAudioItag, preferredAudioTrackId) }
 
         if (selectedAudio == null || selectedVideo == null) {
             Log.w(TAG, "Could not select audio/video format: audio=${selectedAudio != null}, video=${selectedVideo != null}")
@@ -149,6 +151,8 @@ object SabrUrlResolver {
         preferredCodec: String? = null,
         injectedPoToken: String? = null,
         injectedVisitorData: String? = null,
+        preferredAudioItag: Int? = null,
+        preferredAudioTrackId: String? = null,
     ): SabrStreamInfo? {
         val streamingData = playerResponse.streamingData ?: return null
         val sabrUrl = streamingData.serverAbrStreamingUrl ?: return null
@@ -168,7 +172,7 @@ object SabrUrlResolver {
         val videoFormats = adaptiveFormats.filter { !it.isAudio }
 
         val selectedVideo = selectVideoForHeight(videoFormats, targetHeight, preferredCodec) ?: return null
-        val selectedAudio = selectBestAudio(audioFormats, selectedVideo) ?: return null
+        val selectedAudio = selectPreferredAudio(audioFormats, selectedVideo, preferredAudioItag, preferredAudioTrackId) ?: return null
 
         val durationMs =
             selectedVideo.approxDurationMs?.toLongOrNull()
@@ -244,6 +248,24 @@ object SabrUrlResolver {
         if (track.isAutoDubbed == true) return false
         val id = track.id ?: return true
         return id.substringAfterLast('.', missingDelimiterValue = "4") == "4"
+    }
+
+    /** On response reload, retain the user's exact audio representation and track when available. */
+    internal fun selectPreferredAudio(
+        audioFormats: List<PlayerResponse.StreamingData.Format>,
+        selectedVideo: PlayerResponse.StreamingData.Format,
+        preferredAudioItag: Int? = null,
+        preferredAudioTrackId: String? = null,
+    ): PlayerResponse.StreamingData.Format? {
+        val preferredTrackId = preferredAudioTrackId?.takeIf { it.isNotBlank() }
+        val preferredTrackFormats =
+            preferredTrackId?.let { trackId -> audioFormats.filter { it.audioTrack?.id == trackId } }.orEmpty()
+        val itagCandidates = preferredTrackFormats.ifEmpty { audioFormats }
+        val exactMatches = preferredAudioItag?.let { itag -> itagCandidates.filter { it.itag == itag } }.orEmpty()
+        exactMatches.firstOrNull { preferredTrackId == null && isOriginalAudioTrack(it) }?.let { return it }
+        exactMatches.firstOrNull()?.let { return it }
+        if (preferredTrackFormats.isNotEmpty()) return selectBestAudio(preferredTrackFormats, selectedVideo)
+        return selectBestAudio(audioFormats, selectedVideo)
     }
 
     private fun selectBestAudio(

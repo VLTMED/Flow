@@ -10,6 +10,7 @@ import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import io.github.aedev.flow.innertube.models.YouTubeClient
+import io.github.aedev.flow.innertube.models.response.PlayerResponse
 import io.github.aedev.flow.player.sabr.core.SabrCpn
 import io.github.aedev.flow.player.sabr.core.SabrSessionState
 import io.github.aedev.flow.player.sabr.core.SabrStreamController
@@ -29,37 +30,39 @@ object SabrMediaSourceFactory {
         mediaId: String = videoId,
         mediaMetadata: MediaMetadata = MediaMetadata.EMPTY,
         segmentCache: SabrSessionSegmentCache? = null,
+        selectedAudioFormat: PlayerResponse.StreamingData.Format? = null,
     ): SabrMediaSourceResult {
+        val selectedInfo = info.withAudioQuality(selectedAudioFormat)
         val sessionState =
             SabrSessionState().apply {
-                this.streamingUrl = info.streamingUrl
+                this.streamingUrl = selectedInfo.streamingUrl
                 this.videoId = videoId
-                this.selectedAudioItag = info.audioItag
-                this.selectedAudioLmt = info.audioLmt
-                this.selectedVideoItag = info.videoItag
-                this.selectedVideoLmt = info.videoLmt
-                this.audioTrackId = info.audioTrackId
-                this.selectedAudioXtags = info.audioXtags
-                this.selectedVideoXtags = info.videoXtags
+                this.selectedAudioItag = selectedInfo.audioItag
+                this.selectedAudioLmt = selectedInfo.audioLmt
+                this.selectedVideoItag = selectedInfo.videoItag
+                this.selectedVideoLmt = selectedInfo.videoLmt
+                this.audioTrackId = selectedInfo.audioTrackId
+                this.selectedAudioXtags = selectedInfo.audioXtags
+                this.selectedVideoXtags = selectedInfo.videoXtags
                 // stickyResolution = the user's explicit pick (0 in auto); selectedVideoHeight is
                 // the actual chosen format height, used to floor sticky_resolution so auto mode
                 // still asks the server for full quality instead of dropping to 360p.
-                this.stickyResolution = info.targetHeight
-                this.selectedVideoHeight = info.videoHeight
+                this.stickyResolution = selectedInfo.targetHeight
+                this.selectedVideoHeight = selectedInfo.videoHeight
                 this.playheadPositionMs = startPositionMs
-                this.poToken = info.poToken
-                this.visitorId = info.visitorId
-                this.ustreamerConfig = info.ustreamerConfig
+                this.poToken = selectedInfo.poToken
+                this.visitorId = selectedInfo.visitorId
+                this.ustreamerConfig = selectedInfo.ustreamerConfig
                 this.durationMs = durationMs
-                this.clientNameId = info.clientNameId
-                this.clientVersion = info.clientVersion.ifEmpty { YouTubeClient.WEB.clientVersion }
+                this.clientNameId = selectedInfo.clientNameId
+                this.clientVersion = selectedInfo.clientVersion.ifEmpty { YouTubeClient.WEB.clientVersion }
                 // A real web streamer_context carries no OS fields — the browser client reports
                 // clientName/version + hl/gl only. Sending osName/osVersion made our streaming
                 // request fingerprint-inconsistent with the player response, a RELOAD_PLAYER_RESPONSE
                 // trigger.
                 this.osName = ""
                 this.osVersion = ""
-                this.cpn = info.cpn.ifEmpty(SabrCpn::generate)
+                this.cpn = selectedInfo.cpn.ifEmpty(SabrCpn::generate)
             }
         if (startPositionMs > 0) sessionState.lastSeekAtMs = System.currentTimeMillis()
 
@@ -85,6 +88,8 @@ object SabrMediaSourceFactory {
                         reloadToken = event.reloadToken,
                         cpn = sessionCpn.ifEmpty(SabrCpn::generate),
                         client = reloadClient,
+                        preferredAudioItag = selectedAudioFormat?.itag,
+                        preferredAudioTrackId = selectedAudioFormat?.audioTrack?.id,
                     )
                 },
                 segmentCache = segmentCache,
@@ -113,14 +118,14 @@ object SabrMediaSourceFactory {
                 .setUri(audioUri)
                 .setMediaId(mediaId)
                 .setMediaMetadata(mediaMetadata)
-        containerMimeType(info.audioMimeType, isAudio = true)?.let { audioItemBuilder.setMimeType(it) }
+        containerMimeType(selectedInfo.audioMimeType, isAudio = true)?.let { audioItemBuilder.setMimeType(it) }
         val videoItemBuilder =
             MediaItem
                 .Builder()
                 .setUri(videoUri)
                 .setMediaId(mediaId)
                 .setMediaMetadata(mediaMetadata)
-        containerMimeType(info.videoMimeType, isAudio = false)?.let { videoItemBuilder.setMimeType(it) }
+        containerMimeType(selectedInfo.videoMimeType, isAudio = false)?.let { videoItemBuilder.setMimeType(it) }
 
         val audioSource =
             ProgressiveMediaSource

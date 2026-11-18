@@ -42,6 +42,7 @@ import io.github.aedev.flow.ui.components.layout.navigation.FlowTab
 import io.github.aedev.flow.ui.components.layout.topbar.FlowTopBar
 import io.github.aedev.flow.ui.components.library.LibraryNavigationRow
 import io.github.aedev.flow.ui.components.library.LibrarySection
+import io.github.aedev.flow.ui.components.shared.CollectionEditDialog
 import io.github.aedev.flow.ui.components.shared.DeleteCollectionDialog
 import io.github.aedev.flow.ui.components.shared.FlowEmptyState
 import io.github.aedev.flow.ui.components.shared.FlowMaxContentWidth
@@ -86,6 +87,7 @@ fun LibraryScreen(
     val locale = LocalConfiguration.current.locales[0]
     val listState = rememberLazyListState()
     var playlistToDelete by remember { mutableStateOf<PlaylistInfo?>(null) }
+    var musicPlaylistToRename by remember { mutableStateOf<PlaylistInfo?>(null) }
     OnTabReselected(FlowTab.Library.route) { listState.animateScrollToItem(0) }
     val openSection: (LibrarySection) -> Unit = { section ->
         when (section) {
@@ -164,6 +166,7 @@ fun LibraryScreen(
                     onDownloadedMusicClick = onDownloadedMusicClick,
                     onSavedShortClick = onSavedShortClick,
                     onDeletePlaylist = { playlistToDelete = it },
+                    onMusicPlaylistRename = { musicPlaylistToRename = it },
                 )
             } else if (contentSections.isNotEmpty()) {
                 item(key = "sections", contentType = "navigation-section") {
@@ -214,6 +217,19 @@ fun LibraryScreen(
                 },
             )
         }
+        musicPlaylistToRename?.let { playlist ->
+            CollectionEditDialog(
+                title = stringResource(R.string.rename_playlist_title),
+                confirmLabel = stringResource(R.string.action_rename),
+                initialName = playlist.name,
+                showDescription = false,
+                onDismiss = { musicPlaylistToRename = null },
+                onConfirm = { name, _ ->
+                    viewModel.renamePlaylist(playlist.id, name)
+                    musicPlaylistToRename = null
+                },
+            )
+        }
     }
 }
 
@@ -229,6 +245,7 @@ internal fun LazyListScope.libraryShelves(
     onDownloadedMusicClick: (List<DownloadedTrack>, Int) -> Unit,
     onSavedShortClick: (Video) -> Unit,
     onDeletePlaylist: ((PlaylistInfo) -> Unit)? = null,
+    onMusicPlaylistRename: ((PlaylistInfo) -> Unit)? = null,
 ) {
     sections.forEach { section ->
         val onTitleClick = { onOpenSection(section) }
@@ -259,10 +276,12 @@ internal fun LazyListScope.libraryShelves(
                         section = section,
                         videoPlaylistsFlow = viewModel.playlists.takeIf { section != LibrarySection.MUSIC_PLAYLISTS },
                         musicPlaylistsFlow = viewModel.musicPlaylists.takeIf { section != LibrarySection.VIDEO_PLAYLISTS },
+                        ownedMusicPlaylistIdsFlow = viewModel.ownedMusicPlaylistIds,
                         onTitleClick = onTitleClick,
                         onVideoPlaylistClick = onPlaylistClick,
                         onMusicPlaylistClick = onMusicPlaylistClick,
                         onDeletePlaylist = onDeletePlaylist,
+                        onRenameMusicPlaylist = onMusicPlaylistRename,
                     )
                 }
             }

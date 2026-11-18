@@ -7,11 +7,14 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import io.github.aedev.flow.data.model.SponsorBlockCategories
 import io.github.aedev.flow.data.playlist.PlaylistListOrder
+import io.github.aedev.flow.data.translation.TranslationServerType
+import io.github.aedev.flow.data.translation.TranslationSettings
 import io.github.aedev.flow.data.video.downloader.work.RetagResult
 import io.github.aedev.flow.data.video.storage.DownloadLocation
 import io.github.aedev.flow.network.AppProxyConfig
 import io.github.aedev.flow.network.AppProxyType
 import io.github.aedev.flow.player.config.PlayerConfig
+import io.github.aedev.flow.player.quality.AudioRepresentationPreference
 import io.github.aedev.flow.player.stream.CaptionTrackResolver
 import io.github.aedev.flow.ui.components.videoplayer.subtitle.SubtitleEdgeType
 import io.github.aedev.flow.ui.components.videoplayer.subtitle.SubtitleStyle
@@ -27,12 +30,19 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.withContext
 
 internal fun resolveMigratedHideWatchedPreference(
     splitValue: Boolean?,
     legacyValue: Boolean?,
 ): Boolean = splitValue ?: legacyValue ?: false
+
+internal fun resolveMigratedOverlayPreference(
+    currentValue: Boolean?,
+    legacyValue: Boolean?,
+    defaultValue: Boolean,
+): Boolean = currentValue ?: legacyValue ?: defaultValue
 
 private val Context.playerPreferencesDataStore: DataStore<Preferences> by safePreferencesDataStore(name = "player_preferences")
 
@@ -55,10 +65,10 @@ val DEFAULT_NAV_TAB_ORDER = listOf(0, 1, 2, 3, 4, 5, 6)
 private const val MAX_UNPLAYABLE_VIDEO_IDS = 300
 
 /**
- * Preferences that never leave the device in a backup: the proxy password, and SponsorBlock's
- * submission id, which is a private identity for the user's votes and segments.
+ * Preferences that never leave the device in a backup: the proxy password, translation server API
+ * key, and SponsorBlock's submission id, which is a private identity for the user's votes and segments.
  */
-private val BackupExcludedKeys = setOf("proxy_password", "sb_user_id")
+private val BackupExcludedKeys = setOf("proxy_password", "translation_api_key", "sb_user_id")
 
 private fun String?.decodeUnplayableIds(): Set<String> =
     if (isNullOrBlank()) emptySet() else splitToSequence('\n').filter { it.isNotBlank() }.toCollection(LinkedHashSet())
@@ -69,6 +79,11 @@ class PlayerPreferences(
     private val context: Context = context.applicationContext
 
     private object Keys {
+        val TRANSLATION_USE_SERVER = booleanPreferencesKey("translation_use_server")
+        val TRANSLATION_SERVER_TYPE = stringPreferencesKey("translation_server_type")
+        val TRANSLATION_SERVER_URL = stringPreferencesKey("translation_server_url")
+        val TRANSLATION_API_KEY = stringPreferencesKey("translation_api_key")
+        val TRANSLATION_TARGET = stringPreferencesKey("translation_target")
         val DEFAULT_QUALITY_WIFI = stringPreferencesKey("default_quality_wifi")
         val DEFAULT_QUALITY_CELLULAR = stringPreferencesKey("default_quality_cellular")
         val DEFAULT_VIDEO_CODEC = stringPreferencesKey("default_video_codec")
@@ -150,6 +165,9 @@ class PlayerPreferences(
 
         // Audio track preference
         val PREFERRED_AUDIO_LANGUAGE = stringPreferencesKey("preferred_audio_language")
+        val MANUAL_AUDIO_CODEC = stringPreferencesKey("manual_audio_codec")
+        val MANUAL_AUDIO_BITRATE = intPreferencesKey("manual_audio_bitrate")
+        val MANUAL_AUDIO_ITAG = intPreferencesKey("manual_audio_itag")
         val MUSIC_AUDIO_QUALITY = stringPreferencesKey("music_audio_quality")
         val AUDIO_CODEC_PREFERENCE = stringPreferencesKey("audio_codec_preference")
         val MUSIC_AUDIO_FORMAT_ITAG = intPreferencesKey("music_audio_format_itag")
@@ -289,6 +307,8 @@ class PlayerPreferences(
         val OVERLAY_NEXT_PREV_ENABLED = booleanPreferencesKey("overlay_next_prev_enabled")
         val OVERLAY_EDGE_SCRIM_DISABLED = booleanPreferencesKey("overlay_edge_scrim_disabled")
         val OVERLAY_HIDE_CENTER_TRANSPORT_CONTROLS = booleanPreferencesKey("overlay_hide_center_transport_controls")
+        val LEGACY_REMOVE_PLAYER_SHADING = booleanPreferencesKey("remove_player_shading")
+        val LEGACY_HIDE_PLAYER_CONTROLS = booleanPreferencesKey("hide_player_controls")
 
         // Fullscreen Player
         val ADAPTIVE_PLAYER_SIZE_ENABLED = booleanPreferencesKey("adaptive_player_size_enabled")
@@ -713,9 +733,18 @@ class PlayerPreferences(
             commentsEnabled = this[Keys.OVERLAY_COMMENTS_ENABLED] ?: overlayDefaults.commentsEnabled,
             sponsorBlockEnabled = this[Keys.OVERLAY_SPONSORBLOCK_ENABLED] ?: overlayDefaults.sponsorBlockEnabled,
             nextPrevButtonsEnabled = this[Keys.OVERLAY_NEXT_PREV_ENABLED] ?: overlayDefaults.nextPrevButtonsEnabled,
-            edgeScrimDisabled = this[Keys.OVERLAY_EDGE_SCRIM_DISABLED] ?: overlayDefaults.edgeScrimDisabled,
+            edgeScrimDisabled =
+                resolveMigratedOverlayPreference(
+                    currentValue = this[Keys.OVERLAY_EDGE_SCRIM_DISABLED],
+                    legacyValue = this[Keys.LEGACY_REMOVE_PLAYER_SHADING],
+                    defaultValue = overlayDefaults.edgeScrimDisabled,
+                ),
             hideCenterTransportControls =
-                this[Keys.OVERLAY_HIDE_CENTER_TRANSPORT_CONTROLS] ?: overlayDefaults.hideCenterTransportControls,
+                resolveMigratedOverlayPreference(
+                    currentValue = this[Keys.OVERLAY_HIDE_CENTER_TRANSPORT_CONTROLS],
+                    legacyValue = this[Keys.LEGACY_HIDE_PLAYER_CONTROLS],
+                    defaultValue = overlayDefaults.hideCenterTransportControls,
+                ),
             showControlsWhileLoading =
                 this[Keys.SHOW_CONTROLS_WHILE_LOADING] ?: overlayDefaults.showControlsWhileLoading,
             fullscreenSeekbarHorizontalPaddingDp =
@@ -744,7 +773,24 @@ class PlayerPreferences(
     }
 
     val overlayPreferences: Flow<PlayerOverlayPreferences> =
-        context.playerPreferencesDataStore.data.map { preferences -> preferences.toOverlayPreferences() }
+        context.playerPreferencesDataStore.data
+            .onStart { migrateLegacyOverlayPreferences() }
+            .map { preferences -> preferences.toOverlayPreferences() }
+
+    private suspend fun migrateLegacyOverlayPreferences() {
+        context.playerPreferencesDataStore.edit { preferences ->
+            val legacyShadingDisabled = preferences[Keys.LEGACY_REMOVE_PLAYER_SHADING]
+            val legacyHideCenterControls = preferences[Keys.LEGACY_HIDE_PLAYER_CONTROLS]
+            if (preferences[Keys.OVERLAY_EDGE_SCRIM_DISABLED] == null && legacyShadingDisabled != null) {
+                preferences[Keys.OVERLAY_EDGE_SCRIM_DISABLED] = legacyShadingDisabled
+            }
+            if (preferences[Keys.OVERLAY_HIDE_CENTER_TRANSPORT_CONTROLS] == null && legacyHideCenterControls != null) {
+                preferences[Keys.OVERLAY_HIDE_CENTER_TRANSPORT_CONTROLS] = legacyHideCenterControls
+            }
+            preferences.remove(Keys.LEGACY_REMOVE_PLAYER_SHADING)
+            preferences.remove(Keys.LEGACY_HIDE_PLAYER_CONTROLS)
+        }
+    }
 
     suspend fun setSbColorForCategory(
         category: String,
@@ -1599,6 +1645,38 @@ class PlayerPreferences(
         }
     }
 
+    /** The global manual audio representation, using the same persisted keys as earlier sidecar builds. */
+    val manualAudioRepresentation: Flow<AudioRepresentationPreference?> =
+        context.playerPreferencesDataStore.data.map { preferences ->
+            val codec = preferences[Keys.MANUAL_AUDIO_CODEC]
+            val bitrate = preferences[Keys.MANUAL_AUDIO_BITRATE]
+            val itag = preferences[Keys.MANUAL_AUDIO_ITAG]
+            if (codec.isNullOrBlank() && bitrate == null && itag == null) {
+                null
+            } else {
+                AudioRepresentationPreference(codec, bitrate, itag)
+            }
+        }
+
+    suspend fun setManualAudioRepresentation(preference: AudioRepresentationPreference) {
+        context.playerPreferencesDataStore.edit { preferences ->
+            preference.codec?.takeIf { it.isNotBlank() }?.let { preferences[Keys.MANUAL_AUDIO_CODEC] = it }
+                ?: preferences.remove(Keys.MANUAL_AUDIO_CODEC)
+            preference.bitrate?.let { preferences[Keys.MANUAL_AUDIO_BITRATE] = it }
+                ?: preferences.remove(Keys.MANUAL_AUDIO_BITRATE)
+            preference.itag?.let { preferences[Keys.MANUAL_AUDIO_ITAG] = it }
+                ?: preferences.remove(Keys.MANUAL_AUDIO_ITAG)
+        }
+    }
+
+    suspend fun clearManualAudioRepresentation() {
+        context.playerPreferencesDataStore.edit { preferences ->
+            preferences.remove(Keys.MANUAL_AUDIO_CODEC)
+            preferences.remove(Keys.MANUAL_AUDIO_BITRATE)
+            preferences.remove(Keys.MANUAL_AUDIO_ITAG)
+        }
+    }
+
     /** A preferred exact format id for music when the current track offers it; zero uses the global quality rules. */
     val musicAudioFormatItag: Flow<Int> =
         context.playerPreferencesDataStore.data.map { preferences ->
@@ -1910,14 +1988,20 @@ class PlayerPreferences(
     val overlayEdgeScrimDisabled: Flow<Boolean> = overlayPreferences.map { it.edgeScrimDisabled }.distinctUntilChanged()
 
     suspend fun setOverlayEdgeScrimDisabled(disabled: Boolean) {
-        context.playerPreferencesDataStore.edit { it[Keys.OVERLAY_EDGE_SCRIM_DISABLED] = disabled }
+        context.playerPreferencesDataStore.edit {
+            it[Keys.OVERLAY_EDGE_SCRIM_DISABLED] = disabled
+            it.remove(Keys.LEGACY_REMOVE_PLAYER_SHADING)
+        }
     }
 
     val overlayHideCenterTransportControls: Flow<Boolean> =
         overlayPreferences.map { it.hideCenterTransportControls }.distinctUntilChanged()
 
     suspend fun setOverlayHideCenterTransportControls(hidden: Boolean) {
-        context.playerPreferencesDataStore.edit { it[Keys.OVERLAY_HIDE_CENTER_TRANSPORT_CONTROLS] = hidden }
+        context.playerPreferencesDataStore.edit {
+            it[Keys.OVERLAY_HIDE_CENTER_TRANSPORT_CONTROLS] = hidden
+            it.remove(Keys.LEGACY_HIDE_PLAYER_CONTROLS)
+        }
     }
 
     val overlayCcEnabled: Flow<Boolean> =
@@ -3912,6 +3996,51 @@ class PlayerPreferences(
         backup.strings[Keys.APP_LANGUAGE.name]
             ?.takeIf { AppLanguageManager.normalizeLanguageTag(it) != AppLanguageManager.appliedLanguage.value }
             ?.let { tag -> withContext(Dispatchers.Main.immediate) { AppLanguageManager.applyLanguageTag(context, tag) } }
+    }
+
+    val translationSettings: Flow<TranslationSettings> =
+        context.playerPreferencesDataStore.data
+            .map { preferences ->
+                TranslationSettings(
+                    useServer = preferences[Keys.TRANSLATION_USE_SERVER] ?: false,
+                    serverType = TranslationServerType.fromKey(preferences[Keys.TRANSLATION_SERVER_TYPE]),
+                    serverUrl = preferences[Keys.TRANSLATION_SERVER_URL],
+                    apiKey = null,
+                    target = preferences[Keys.TRANSLATION_TARGET].orEmpty(),
+                )
+            }.distinctUntilChanged()
+
+    suspend fun setTranslationUseServer(enabled: Boolean) {
+        context.playerPreferencesDataStore.edit { preferences -> preferences[Keys.TRANSLATION_USE_SERVER] = enabled }
+    }
+
+    suspend fun setTranslationServer(
+        type: TranslationServerType,
+        url: String,
+    ) {
+        context.playerPreferencesDataStore.edit { preferences ->
+            preferences[Keys.TRANSLATION_SERVER_TYPE] = type.key
+            preferences[Keys.TRANSLATION_SERVER_URL] = url
+            preferences[Keys.TRANSLATION_USE_SERVER] = true
+        }
+    }
+
+    suspend fun getLegacyTranslationApiKey(): String? = context.playerPreferencesDataStore.data.first()[Keys.TRANSLATION_API_KEY]
+
+    suspend fun removeLegacyTranslationApiKeyIfUnchanged(value: String) {
+        context.playerPreferencesDataStore.edit { preferences ->
+            if (preferences[Keys.TRANSLATION_API_KEY] == value) preferences.remove(Keys.TRANSLATION_API_KEY)
+        }
+    }
+
+    suspend fun setTranslationTarget(tag: String) {
+        context.playerPreferencesDataStore.edit { preferences ->
+            if (tag.isBlank()) {
+                preferences.remove(Keys.TRANSLATION_TARGET)
+            } else {
+                preferences[Keys.TRANSLATION_TARGET] = tag
+            }
+        }
     }
 }
 

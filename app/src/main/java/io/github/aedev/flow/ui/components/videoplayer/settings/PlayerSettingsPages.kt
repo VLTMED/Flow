@@ -109,6 +109,12 @@ internal fun PlayerSettingsQualityPage(
                 )
             } else {
                 FlowRowGroup {
+                    FlowSelectionRow(
+                        title = stringResource(R.string.quality_auto),
+                        selected = currentAudioQuality < 0,
+                        shape = flowRowGroupShape(0, availableAudioQualities.size + 1),
+                        onClick = { onAudioQualitySelected(-1) },
+                    )
                     availableAudioQualities.forEachIndexed { index, track ->
                         val codecLabel =
                             when (track.codecKey) {
@@ -144,7 +150,7 @@ internal fun PlayerSettingsQualityPage(
                                 track.language.takeIf { it.isNotBlank() }
                                     ?: track.label.takeIf { it.isNotBlank() },
                             selected = index == currentAudioQuality,
-                            shape = flowRowGroupShape(index, availableAudioQualities.size),
+                            shape = flowRowGroupShape(index + 1, availableAudioQualities.size + 1),
                             onClick = { onAudioQualitySelected(index) },
                         )
                     }

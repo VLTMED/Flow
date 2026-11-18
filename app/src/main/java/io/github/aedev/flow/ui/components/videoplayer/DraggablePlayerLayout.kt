@@ -56,6 +56,7 @@ import io.github.aedev.flow.ui.components.videoplayer.motion.openGroundCornerRad
 import io.github.aedev.flow.ui.components.videoplayer.motion.openGroundRect
 import io.github.aedev.flow.ui.components.videoplayer.motion.resnapTargets
 import io.github.aedev.flow.ui.components.videoplayer.motion.resolveOpenOriginRect
+import io.github.aedev.flow.ui.components.videoplayer.motion.shouldUseLeftAlignedMiniPlayer
 import io.github.aedev.flow.ui.components.videoplayer.motion.update
 import io.github.aedev.flow.ui.theme.PlayerGround
 import kotlin.math.roundToInt
@@ -264,7 +265,12 @@ fun DraggablePlayerLayout(
             )
 
             SideEffect {
-                state.preferLeftAlignedMiniPlayer = miniPlayerLeftAligned
+                state.preferLeftAlignedMiniPlayer =
+                    shouldUseLeftAlignedMiniPlayer(
+                        enabled = miniPlayerLeftAligned,
+                        isRtl = systemLayoutDirection == LayoutDirection.Rtl,
+                        isPortrait = !isLandscape,
+                    )
                 val normalMiniWidth = geometry.miniBoxWidth(geometry.baseMiniWidth)
                 val normalMaxX = (geometry.screenWidth - normalMiniWidth - geometry.margin).coerceAtLeast(geometry.minX)
                 state.leftAlignedTargetX =

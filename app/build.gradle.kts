@@ -1,5 +1,6 @@
 import com.android.build.api.variant.BuildConfigField
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.io.File
 import java.util.Properties
 
 plugins {
@@ -19,6 +20,23 @@ val localProperties =
             .takeIf { it.exists() }
             ?.inputStream()
             ?.use { load(it) }
+    }
+
+val playerOptionsBuild = providers.gradleProperty("playerOptionsBuild").orNull.toBoolean()
+val playerOptionsVersionCode = providers.gradleProperty("playerOptionsVersionCode").orNull?.toIntOrNull() ?: 37
+require(!playerOptionsBuild || playerOptionsVersionCode > 36) {
+    "Player Options versionCode must be greater than 36."
+}
+val playerOptionsSigning =
+    Properties().apply {
+        if (playerOptionsBuild) {
+            val config = File(System.getProperty("user.home"), ".local/share/flow-playeroptions/signing.properties")
+            require(config.isFile) { "Dedicated Player Options signing settings are missing; refusing a fallback key." }
+            config.inputStream().use { load(it) }
+            require(getProperty("applicationId") == "io.github.aedev.flow.playeroptions") {
+                "Player Options application identity mismatch."
+            }
+        }
     }
 
 fun secretValue(
@@ -54,10 +72,15 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "io.github.aedev.flow.independent"
+        applicationId =
+            if (playerOptionsBuild) {
+                playerOptionsSigning.getProperty("applicationId")
+            } else {
+                "io.github.aedev.flow.independent"
+            }
         minSdk = 26
         targetSdk = 36
-        versionCode = 30
+        versionCode = if (playerOptionsBuild) playerOptionsVersionCode else 30
         versionName = "3.0.6"
 
         buildConfigField("int", "NIGHTLY_RUN", "0")
@@ -125,6 +148,16 @@ android {
     }
 
     signingConfigs {
+        if (playerOptionsBuild) {
+            create("playerOptions") {
+                storeFile = file(playerOptionsSigning.getProperty("storeFile"))
+                storePassword = playerOptionsSigning.getProperty("storePassword")
+                keyAlias = playerOptionsSigning.getProperty("keyAlias")
+                keyPassword = playerOptionsSigning.getProperty("keyPassword")
+                enableV2Signing = true
+                enableV3Signing = true
+            }
+        }
         create("release") {
             storeFile = rootDir.resolve("release.keystore")
             storePassword = (project.findProperty("storePassword") as? String)
@@ -174,7 +207,9 @@ android {
                 } catch (e: Exception) {
                     null
                 }
-            if (releaseKeystore?.exists() == true) {
+            if (playerOptionsBuild) {
+                signingConfig = signingConfigs.getByName("playerOptions")
+            } else if (releaseKeystore?.exists() == true) {
                 signingConfig = signingConfigs.getByName("release")
                 println("Using RELEASE signing config with keystore: ${releaseKeystore.absolutePath}")
             } else {

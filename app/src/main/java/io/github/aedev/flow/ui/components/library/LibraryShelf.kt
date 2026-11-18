@@ -36,14 +36,17 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import io.github.aedev.flow.data.localmedia.LocalMediaIds
 import io.github.aedev.flow.data.model.Video
 import io.github.aedev.flow.data.music.DownloadedTrack
 import io.github.aedev.flow.data.music.model.MusicTrack
 import io.github.aedev.flow.data.video.DownloadedVideo
+import io.github.aedev.flow.ui.components.music.sheet.LocalMusicMenus
 import io.github.aedev.flow.ui.components.shared.MediaShortCard
 import io.github.aedev.flow.ui.components.shared.ShimmerBone
 import io.github.aedev.flow.ui.components.shared.ShortCardDefaults
 import io.github.aedev.flow.ui.components.shared.dpadShelfRow
+import io.github.aedev.flow.ui.components.shared.quickactions.VideoQuickActionsBottomSheet
 
 private const val PLACEHOLDER_CARD_COUNT = 2
 private const val PLACEHOLDER_STAGGER_MS = 120
@@ -168,6 +171,8 @@ internal fun LibraryMediaShelf(
     onDownloadedVideoClick: (List<DownloadedVideo>, Int) -> Unit,
     onDownloadedMusicClick: (List<DownloadedTrack>, Int) -> Unit,
 ) {
+    val musicMenus = LocalMusicMenus.current
+    var videoForQuickActions by remember { mutableStateOf<Video?>(null) }
     val musicQueue =
         remember(items) {
             items.mapNotNull { (it as? LibraryMediaItem.MusicItem)?.track }
@@ -216,6 +221,7 @@ internal fun LibraryMediaShelf(
                         thumbnailUrl = item.track.thumbnailUrl,
                         onClick = { onMusicClick(item.track, musicQueue, sourceName) },
                         artworkSize = artworkSize,
+                        onLongClick = if (LocalMediaIds.isLocal(item.track.videoId)) null else ({ musicMenus.openSong(item.track) }),
                     )
                 }
 
@@ -230,6 +236,7 @@ internal fun LibraryMediaShelf(
                             if (index >= 0) onDownloadedVideoClick(downloadedVideoQueue, index)
                         },
                         width = cardWidth,
+                        onLongClick = { videoForQuickActions = item.download.video },
                     )
                 }
 
@@ -247,10 +254,23 @@ internal fun LibraryMediaShelf(
                             if (index >= 0) onDownloadedMusicClick(downloadedMusicQueue, index)
                         },
                         artworkSize = artworkSize,
+                        onLongClick =
+                            if (LocalMediaIds.isLocal(item.download.track.videoId)) {
+                                null
+                            } else {
+                                { musicMenus.openSong(item.download.track) }
+                            },
                     )
                 }
             }
         }
+    }
+
+    videoForQuickActions?.let { video ->
+        VideoQuickActionsBottomSheet(
+            video = video,
+            onDismiss = { videoForQuickActions = null },
+        )
     }
 }
 

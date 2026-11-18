@@ -106,7 +106,8 @@ fun FlowCommentItem(
 
     val accent = tint?.accent ?: MaterialTheme.colorScheme.primary
     val chipColor = tint?.container ?: MaterialTheme.colorScheme.surfaceContainerHighest
-    val commentText = rememberCommentText(comment, accent)
+    val translation = rememberCommentTranslation(comment)
+    val commentText = translation.shown(rememberCommentText(comment, accent))
 
     if (showFullSizeImage) {
         FullSizeImageDialog(
@@ -224,6 +225,13 @@ fun FlowCommentItem(
                                 .clickable { isExpanded = true },
                     )
                 }
+
+                CommentTranslateLink(
+                    comment = comment,
+                    color = accent,
+                    state = translation,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
 
                 Spacer(modifier = Modifier.height(8.dp))
 

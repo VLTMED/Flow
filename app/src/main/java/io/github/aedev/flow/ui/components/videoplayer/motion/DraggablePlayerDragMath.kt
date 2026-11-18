@@ -109,6 +109,13 @@ internal fun shouldCollapseOnRelease(
     scaledVelocityY: Float,
 ): Boolean = fraction > COLLAPSE_COMMIT_FRACTION || scaledVelocityY > COLLAPSE_FLING_VELOCITY
 
+/** Only RTL portrait docks left; LTR and RTL landscape stay on the right. */
+internal fun shouldUseLeftAlignedMiniPlayer(
+    enabled: Boolean,
+    isRtl: Boolean,
+    isPortrait: Boolean,
+): Boolean = enabled && isRtl && isPortrait
+
 internal data class MiniPlayerBounds(
     val minX: Float,
     val maxX: Float,

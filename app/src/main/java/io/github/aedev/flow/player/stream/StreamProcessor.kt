@@ -58,6 +58,15 @@ object StreamProcessor {
             .toList()
     }
 
+    /** Restore the best available source representation for this exact language/dub track. */
+    fun bestAudioStreamForTrack(
+        streams: List<AudioStream>,
+        selectedTrack: AudioStream?,
+    ): AudioStream? =
+        selectedTrack?.let { track ->
+            processAudioQualityStreams(streams, track).firstOrNull() ?: track
+        }
+
     fun indexOfAudioQuality(
         streams: List<AudioStream>,
         selectedStream: AudioStream?,

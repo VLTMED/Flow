@@ -219,34 +219,36 @@ fun TvPlayerScreen(
     }
 
     val input =
-        remember {
-            TvPlayerInput(
-                overlayMode = {
-                    if (manager.autoplayCountdown.value.isActive) TvOverlayMode.PANEL else overlayController.state.value.mode
-                },
-                seekBarFocused = { seekBarFocused },
-                isScrubbing = { scrubController.current.isScrubbing },
-                perform = ::perform,
-                onInteraction = overlayController::onUserInteraction,
-                onDownFromControls = {
-                    val opens = !upNextShown
-                    upNextShown = true
-                    opens
-                },
-            )
-        }
+        TvPlayerInput(
+            overlayMode = {
+                if (manager.autoplayCountdown.value.isActive) TvOverlayMode.PANEL else overlayController.state.value.mode
+            },
+            seekBarFocused = { seekBarFocused },
+            isScrubbing = { scrubController.current.isScrubbing },
+            perform = ::perform,
+            onInteraction = overlayController::onUserInteraction,
+            onDownFromControls = {
+                val opens = !upNextShown
+                upNextShown = true
+                opens
+            },
+        )
 
     TvOverlayAutoHideEffect(overlayController, overlayState, playerState.isPlaying, scrubUiState.isScrubbing)
     TvOverlayFocusEffect(
         mode = overlayState.mode,
         rootFocusRequester = rootFocusRequester,
         transportTarget = {
-            val target = pendingFocusTarget
-            pendingFocusTarget = TvPlayerFocusTarget.PLAY_PAUSE
-            when (target) {
-                TvPlayerFocusTarget.SEEK_BAR -> seekBarFocusRequester
-                TvPlayerFocusTarget.PLAY_PAUSE -> playPauseFocusRequester
-                TvPlayerFocusTarget.UP_NEXT -> upNextFocusRequester
+            if (overlayPreferences.hideCenterTransportControls) {
+                rootFocusRequester
+            } else {
+                val target = pendingFocusTarget
+                pendingFocusTarget = TvPlayerFocusTarget.PLAY_PAUSE
+                when (target) {
+                    TvPlayerFocusTarget.SEEK_BAR -> seekBarFocusRequester
+                    TvPlayerFocusTarget.PLAY_PAUSE -> playPauseFocusRequester
+                    TvPlayerFocusTarget.UP_NEXT -> upNextFocusRequester
+                }
             }
         },
         onHidden = { upNextShown = false },
@@ -309,6 +311,7 @@ fun TvPlayerScreen(
         TvPlayerControls(
             visible = overlayState.mode == TvOverlayMode.TRANSPORT,
             edgeScrimDisabled = overlayPreferences.edgeScrimDisabled,
+            hideCenterTransportControls = overlayPreferences.hideCenterTransportControls,
             video = video,
             isPlaying = playerState.isPlaying,
             isBuffering = playerState.isBuffering,

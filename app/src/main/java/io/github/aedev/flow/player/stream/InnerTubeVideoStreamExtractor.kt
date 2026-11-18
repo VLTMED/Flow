@@ -360,6 +360,8 @@ object InnerTubeVideoStreamExtractor {
         cpn: String = SabrCpn.generate(),
         reloadToken: String? = null,
         client: YouTubeClient = YouTubeClient.WEB,
+        preferredAudioItag: Int? = null,
+        preferredAudioTrackId: String? = null,
     ): SabrStreamInfo? =
         withContext(Dispatchers.IO) {
             val failureReasons = mutableListOf<String>()
@@ -371,6 +373,8 @@ object InnerTubeVideoStreamExtractor {
                 cpn = cpn,
                 reloadToken = reloadToken,
                 client = client,
+                preferredAudioItag = preferredAudioItag,
+                preferredAudioTrackId = preferredAudioTrackId,
             )?.sabrInfo.also { sabrInfo ->
                 if (sabrInfo == null) {
                     Log.w(TAG, "SABR download resolve failed for $videoId: ${failureReasons.joinToString(" | ")}")
@@ -639,6 +643,8 @@ object InnerTubeVideoStreamExtractor {
         cpn: String = SabrCpn.generate(),
         reloadToken: String? = null,
         client: YouTubeClient = YouTubeClient.WEB,
+        preferredAudioItag: Int? = null,
+        preferredAudioTrackId: String? = null,
     ): VideoExtractionResult? {
         val label = client.clientName
         try {
@@ -702,6 +708,8 @@ object InnerTubeVideoStreamExtractor {
                         preferredCodec = preferredCodec,
                         injectedPoToken = poToken.playerRequestPoToken,
                         injectedVisitorData = visitorData,
+                        preferredAudioItag = preferredAudioItag,
+                        preferredAudioTrackId = preferredAudioTrackId,
                     )
                 } else {
                     SabrUrlResolver.resolve(
@@ -709,6 +717,8 @@ object InnerTubeVideoStreamExtractor {
                         preferredCodec = preferredCodec,
                         injectedPoToken = poToken.playerRequestPoToken,
                         injectedVisitorData = visitorData,
+                        preferredAudioItag = preferredAudioItag,
+                        preferredAudioTrackId = preferredAudioTrackId,
                     )
                 }
             if (resolved == null) {
